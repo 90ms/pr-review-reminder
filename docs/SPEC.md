@@ -1,144 +1,203 @@
-# PR Review Reminder — 스펙 (계약)
+# PR Review Reminder — 제품 명세
 
-> macOS 메뉴바 앱. 내가 리뷰어인데 아직 안 본 PR을, 정해진 시간에 `gh`로 모아
-> `claude`/`codex` CLI로 요약·리뷰하고, 사용자가 확인 후 인라인 코멘트/Approve를 남긴다.
+> macOS 메뉴바에서 리뷰 요청을 모으고, 사용자의 로컬 `claude` 또는 `codex`
+> CLI로 리뷰 초안을 만든 뒤, 사용자가 확인한 내용만 GitHub에 게시한다.
 
-- **버전**: 0.7
-- **작성일**: 2026-07-24 (최신화)
-- **상태**: 구현됨 — 43개 테스트 통과, 실제 PR 스모크 검증 완료. 아래 5.x/5.y 확장 반영.
-- **미구현(보류)**: #2 세션 잔여 토큰 기반 리뷰 제한 (claude/codex CLI가 잔여 한도를 스크립트로 미노출).
+- 기준일: 2026-07-24
+- 대상 플랫폼: macOS 14+
+- 문서 성격: 현재 구현의 계약. 향후 작업은 [`tasks/plan.md`](../tasks/plan.md)에 둔다.
 
-### 구현·검증 현황 요약
-- AC1–AC10: 코어(설정·수집·리뷰판정·AI파싱·커맨드구성·진단·스케줄·빌드) — 구현·테스트.
-- AC11–AC15: 다국어(F1/F3)·스킬 주입(F4)·피드백 이슈(F5) — 구현·테스트.
-- AC16–AC19: 리뷰 히스토리·캐시 복원·누적 집계(H1–H3) — 구현·테스트.
-- 실측 스모크: claude/codex 실제 실행, 토큰·비용(예: 49,718 tokens · $0.4949), 인라인 라인 매핑 유효 확인.
+## 1. 문제와 목표
 
----
+리뷰 요청이 여러 저장소에 흩어지면 놓치기 쉽고, PR의 의도와 diff를 파악하는 데
+반복 비용이 든다. 이 앱은 다음 결과를 목표로 한다.
 
-## 1. Problem — 무엇이 불편한가
-- 리뷰 요청이 여러 repo에 흩어져 있어 놓치기 쉽다.
-- 리뷰 전 "이 PR이 뭘 하는지" 파악 비용이 크다.
-- 그 결과 리뷰가 밀리고 PR 병목이 생긴다.
+1. 내가 리뷰어로 요청된 열린 PR을 한곳에서 확인한다.
+2. 필요한 PR만 AI로 분석해 요약, 리뷰 포인트, 인라인 코멘트 초안을 얻는다.
+3. 큰 상세 화면에서 diff와 초안을 검토하고 편집한다.
+4. 미리보기 후 사용자가 명시적으로 선택한 코멘트 또는 승인만 게시한다.
+5. 같은 PR head commit의 결과는 로컬 히스토리에서 복원해 AI 사용량을 줄인다.
 
-## 2. Outcome — 완료 후 관찰 가능한 동작
-사용자가 앱을 실행하고 대상 org를 설정하면:
-- 메뉴바에 리뷰 대기 PR 개수 배지가 뜬다.
-- 설정된 시각/주기에 자동으로 리뷰 대기 PR을 수집한다.
-- 각 PR에 대해 AI 요약 + 리뷰 포인트를 팝오버 카드에서 본다.
-- 카드의 버튼으로 인라인 코멘트/일반 코멘트/Approve를 사용자 확인 후 게시한다.
+## 2. 핵심 원칙
 
-## 3. In scope
-- 대상 org/repo 설정 (기본 `fastlane-dev`, 변경 가능; 특정 repo만도 가능).
-- `review-requested:@me` & 내가 아직 리뷰하지 않은 열린 PR 수집.
-- PR 메타(제목/작성자/변경규모) + diff + 설명 수집.
-- `claude` 또는 `codex` CLI로 요약·리뷰 포인트·인라인 코멘트 초안(JSON) 생성.
-- 설정된 시각(매일 HH:mm) 또는 N시간 간격 스케줄 + 시스템 알림.
-- 사용자 트리거로 인라인 코멘트 / 요약 코멘트 / Approve 게시.
-- 설정 화면(org 경로, 스케줄, AI 툴 선택, 프롬프트 템플릿, 알림 on/off).
-- CLI 의존성 진단(gh/claude/codex 설치·로그인 여부).
+- **게시 권한은 사용자에게 있다.** 자동 수집·분석은 가능하지만 코멘트, 승인,
+  피드백 이슈 게시는 반드시 사용자의 명시적 액션으로 시작한다.
+- **인증 정보를 소유하지 않는다.** GitHub 인증은 `gh`, AI 인증과 과금은
+  `claude`/`codex` CLI에 위임하며 앱은 토큰이나 API 키를 저장하지 않는다.
+- **외부 명령을 테스트 경계로 둔다.** 모든 CLI 실행은 `ProcessRunning`을 통해
+  주입되어, 테스트가 실제 GitHub 게시나 AI 호출을 수행하지 않게 한다.
+- **로컬 데이터의 범위를 드러낸다.** 리뷰 결과와 diff를 포함한 히스토리는
+  Application Support 아래 로컬 JSON에 저장된다.
 
-## 4. Out of scope
-- AI의 자동(무검토) 게시.
-- 팀 대시보드/공유.
-- 자체 API 키 관리·과금 (CLI 구독 재사용으로 대체).
-- GitHub 외 플랫폼.
-- 코드 서명/공증/배포 파이프라인 (로컬 실행 가능한 `.app` 조립까지만).
+## 3. 사용자 흐름
 
-## 5. Constraints
-- **인증 위임**: 앱은 토큰을 저장/관리하지 않는다. GitHub는 `gh`, AI는 `claude`/`codex` CLI에 위임.
-- **게시는 항상 사용자 액션**: 어떤 코멘트/Approve도 자동 게시 금지.
-- **읽기/쓰기 분리**: 수집·요약은 자동, 게시는 수동 트리거.
-- **없는 명령을 지어내지 않는다** (하네스 원칙). CLI 부재 시 진단 후 안내.
-- 플랫폼: macOS 14+ (SwiftUI `MenuBarExtra`).
-- 구현: SwiftPM 실행 타깃 + `.app` 번들 조립 스크립트. `swift build`로 검증 가능해야 함.
+### 3.1 최초 준비
 
-## 5.x v0.3 추가 기능 (요청 반영)
-- **F1 앱 UI 언어**: `appLanguage`(system/korean/english), 기본 system(로케일 추종). 앱 전체 문자열 현지화.
-- **F2 PR 상세 창**: 목록에서 PR 클릭 시 리사이즈 가능한 큰 창에서 요약·리뷰포인트·인라인·diff 전문 확인.
-- **F3 리뷰 출력 언어**: `reviewLanguage`(system/korean/english), 기본 system. AI 프롬프트에 언어 지시 주입.
-- **F4 리뷰 스킬/가이드라인**: `reviewSkill` 텍스트(파일에서 불러오기 가능) → 프롬프트 `{{SKILL}}`로 주입.
-- **F5 피드백→이슈**: "의견 남기기" 입력 → (AI로 정돈) → `gh issue create` 커맨드 **구성·미리보기**.
-  피드백 레포(`feedbackRepository`) 미설정 시 **실제 등록 보류**(커맨드만 표시). 등록도 사용자 액션.
+사용자는 `gh` 로그인과 사용할 AI CLI 로그인을 미리 완료한다. 앱은 시작 시
+`gh`, `claude`, `codex` 설치 및 인증 상태를 진단한다. 설정에서 GitHub owner,
+선택 저장소, AI 도구, 언어, 스케줄, 알림, 프롬프트와 리뷰 가이드라인을 지정한다.
 
-### AC (추가)
-- **AC11**: `AppLanguage.resolved(locale:)`가 system→로케일(ko/en), 명시 선택→해당 언어를 반환.
-- **AC12**: `L10n`이 선택 언어로 키를 번역하고, 누락 키는 키를 폴백 반환.
-- **AC13**: `buildPrompt`가 reviewLanguage 지시와 `{{SKILL}}`를 정확히 주입한다.
-- **AC14**: `FeedbackService.createIssueCommand`가 올바른 `gh issue create` 인자를 구성한다.
-- **AC15**: 피드백 정돈(AI)이 제목/본문 JSON을 파싱한다.
+### 3.2 수집과 분석
 
-## 5.y v0.7 리뷰 히스토리 (요청 반영)
-- **H1 저장**: 리뷰 완료 시 `ReviewRecord`(repo·번호·제목·작성자·url·headSha·tool·시각·analysis·usage·details) 영구 저장(Application Support JSON).
-- **H2 캐시 복원**: 새로고침 시 각 PR의 headSha를 gh로 확인(토큰 0) → 히스토리에 같은 `repo#번호@headSha` 기록이 있으면 **AI 재호출 없이** analysis/usage/details 복원(state=.done).
-- **H3 히스토리 화면**: 과거 리뷰 목록 + 각 요약/리뷰포인트 + **누적 토큰·비용 집계**.
-- **비고**: #2(세션 잔여 토큰 기반 리뷰 제한)는 claude/codex CLI가 잔여 한도를 스크립트로 노출하지 않아 **보류**.
+1. 사용자가 새로고침하거나 앱 실행 중 스케줄이 도래한다.
+2. 앱은 `gh search prs --review-requested=@me --state=open`으로 PR을 수집한다.
+3. 동일한 PR/head SHA의 히스토리가 있으면 저장된 결과를 복원한다.
+4. 사용자가 **코드 리뷰**를 누르거나 자동 리뷰 설정이 켜져 있으면 PR 본문과
+   diff를 가져와 선택한 AI CLI로 분석한다.
+5. 결과와 사용량을 히스토리에 저장하고, 설정에 따라 완료 알림을 보낸다.
 
-### AC (추가)
-- **AC16**: `HistoryStore.upsert`가 같은 id(`repo#num@sha`)는 교체, 다른 SHA는 신규 추가한다.
-- **AC17**: `HistoryStore.record(repo,num,sha)`가 일치 기록을 반환/미일치 시 nil.
-- **AC18**: `HistoryStore.totals()`가 전체 기록의 토큰·비용 합을 정확히 집계한다.
-- **AC19**: 저장/로드 라운드트립이 `ReviewRecord`를 보존한다.
+### 3.3 검토와 게시
 
-## 6. Behavior — 입력/출력/상태/에러
+사용자는 카드 또는 상세 창에서 요약, 심각도별 리뷰 포인트, 인라인 코멘트,
+Split/Unified diff를 확인한다. 게시 시 미리보기 시트를 거치며 다음 액션을
+각각 명시적으로 실행할 수 있다.
 
-### 6.1 수집
-- 입력: org(필수), 선택적 repo 목록, 현재 gh 로그인 사용자.
-- 처리: `gh search prs --review-requested=@me --state=open --owner <org>` →
-  각 PR의 리뷰 목록을 조회해 **내가 남긴 리뷰가 없는 것만** 남김.
-- 출력: `PullRequest` 목록 (repo, number, title, author, additions, deletions, url).
-- 에러: gh 미설치/미로그인 → 수집 중단 + 진단 메시지. 네트워크 실패 → 이전 결과 유지 + 에러 표기.
+- 인라인 코멘트 게시
+- 요약 코멘트 게시
+- Approve
+- 인라인 코멘트 게시 후 Approve
 
-### 6.2 분석
-- 입력: PR diff + body + 파일 목록, 선택된 AI 툴, 프롬프트 템플릿.
-- 처리: CLI에 프롬프트 전달, 응답을 §7 JSON 스키마로 파싱.
-- 출력: `summary`, `reviewPoints[]`, `inlineComments[]`.
-- 에러: CLI 실패/타임아웃 → 해당 PR은 "분석 실패" 상태로 표기, 다른 PR 진행. JSON 파싱 실패 → 원문을 요약 필드에 넣고 인라인 코멘트는 비움.
+### 3.4 히스토리와 피드백
 
-### 6.3 스케줄/알림
-- 매일 지정 시각 또는 N시간 간격으로 수집→분석 실행.
-- 신규 대기 PR 발견 시 시스템 알림 + 배지 갱신.
-- 앱 실행 중일 때 동작(백그라운드 데몬/launchd는 범위 밖).
+- 히스토리는 PR, head SHA, 분석 결과, PR 상세/diff, AI 도구, 토큰·비용과
+  리뷰 시각을 보관한다. 항목별 삭제와 누적 사용량 조회를 제공한다.
+- 피드백은 AI로 제목/본문을 정돈할 수 있다. 대상 저장소가 설정되어 있을 때만
+  사용자의 제출 액션으로 GitHub 이슈를 만들며, 미설정 상태에서는 명령 미리보기만 한다.
 
-### 6.4 게시
-- 인라인 코멘트: 사용자가 카드에서 편집/확정 후 `gh api .../pulls/{n}/comments` 게시.
-- 요약 코멘트: `gh pr comment`.
-- Approve: `gh pr review --approve`.
-- 모든 게시 전 대상/내용을 사용자에게 보여주고, 명시적 클릭으로만 실행.
+## 4. 기능 계약
 
-## 7. AI 출력 스키마
+### 4.1 설정
+
+`AppSettings`는 다음 값을 저장하고 이전 스키마에서 누락된 값은 기본값으로 복원한다.
+
+| 영역 | 값 |
+|---|---|
+| GitHub | owner, 선택 저장소 목록 |
+| AI | `claude`/`codex`, 프롬프트 템플릿, 리뷰 가이드라인 |
+| 언어 | 앱 UI 언어, 리뷰 출력 언어 (`system`/한국어/English) |
+| 스케줄 | 매일 지정 시각 또는 N시간 간격 |
+| 동작 | 알림, PR 발견 시 자동 리뷰 |
+| 피드백 | 이슈를 생성할 `owner/repo` |
+
+프롬프트는 `{{TITLE}}`, `{{BODY}}`, `{{DIFF}}`, `{{SKILL}}`을 치환한다. diff는
+기본 60,000자로 제한하고 잘린 표시를 모델 입력에 추가한다.
+
+### 4.2 GitHub 연동
+
+- 수집: owner 전체 또는 선택 저장소의 리뷰 요청 PR을 최대 100개 조회한다.
+- 상세: 본문, head SHA, additions/deletions, 전체 diff를 조회한다.
+- 게시: 인라인 코멘트는 GitHub API, 요약과 승인은 `gh pr` 명령을 사용한다.
+- 오류: 명령 실패는 호출자에게 전달하며, 수집 실패 시 기존 화면 상태를 유지한다.
+- 인증: 앱 자체 로그인 UI나 토큰 저장소를 제공하지 않는다.
+
+### 4.3 AI 분석
+
+선택한 CLI에 프롬프트를 stdin으로 전달한다. Codex는 임의 작업 디렉터리에서도
+읽기 전용 sandbox로 실행한다. Claude의 구조화된 실행 결과에서는 토큰과 보고된
+비용을, Codex stderr에서는 총 토큰을 읽는다.
+
+기대 출력은 다음 JSON 객체다.
+
 ```json
 {
-  "summary": "이 PR이 무엇을 하는지 2~3줄",
+  "summary": "이 PR이 무엇을 하는지 2~3문장",
   "reviewPoints": [
-    { "severity": "high|medium|low", "text": "리뷰 포인트" }
+    { "severity": "high|medium|low", "text": "검토할 내용" }
   ],
   "inlineComments": [
-    { "path": "src/foo.ts", "line": 42, "side": "RIGHT", "body": "코멘트" }
+    { "path": "Sources/File.swift", "line": 42, "side": "RIGHT", "body": "코멘트" }
   ]
 }
 ```
 
-## 8. Acceptance criteria (독립 검증 가능)
-- **AC1**: `AppSettings`가 org/repo/스케줄/AI툴/프롬프트/알림 값을 저장·복원한다.
-- **AC2**: gh PR 검색 JSON 출력을 `PullRequest` 배열로 파싱한다 (필드 매핑 정확).
-- **AC3**: 리뷰 목록에서 "내가 리뷰했는지"를 로그인 사용자 기준으로 정확히 판정한다.
-- **AC4**: AI JSON 응답을 `Analysis(summary, reviewPoints, inlineComments)`로 파싱한다.
-- **AC5**: AI 응답이 비-JSON/코드펜스 포함일 때도 관대하게 파싱하거나 원문 폴백한다.
-- **AC6**: 선택한 AI 툴에 따라 올바른 CLI 커맨드/인자를 구성한다 (claude `-p`, codex `exec`).
-- **AC7**: 게시 커맨드(인라인/요약/approve)를 올바른 인자로 구성한다 (실제 게시는 사용자 액션).
-- **AC8**: CLI 의존성 진단이 설치/로그인 상태를 정확히 보고한다.
-- **AC9**: 스케줄러가 매일 HH:mm / N시간 간격 다음 실행 시각을 정확히 계산한다.
-- **AC10**: 전체 패키지가 `swift build`로 경고 없이 빌드되고, `.app` 번들이 조립되어 실행된다.
+파서는 코드 펜스나 주변 설명이 있어도 첫 번째 균형 잡힌 JSON 객체를 추출한다.
+유효한 JSON이 없으면 원문을 summary로 보존하고 리뷰 포인트와 인라인 코멘트는 비운다.
 
-## 9. Verification
-- AC1~AC9: `swift test` 단위 테스트 (순수 로직 + 커맨드 구성 + 파싱 + 스케줄 계산).
-- AC6/AC7: 주입 가능한 `ProcessRunner` 목(mock)으로 커맨드 구성 검증 (실제 게시 X).
-- AC10: `swift build` 성공 + 번들 조립 스크립트 실행 + `.app` 기동 확인.
-- 통합(수동): 실제 gh 로그인 상태에서 fastlane-dev 대상 수집 1회.
+### 4.4 스케줄과 알림
 
-## 10. Risks and rollback
-- **인라인 라인 매핑**: diff 라인 ↔ GitHub API `line/side` 정합성이 최대 난관. → v1은 `line`(파일 절대 라인) + `RIGHT` 기준, 실패 시 일반 코멘트로 폴백.
-- **AI 비결정 출력**: JSON 강제 실패 가능 → 관대한 파서 + 원문 폴백(AC5).
-- **큰 diff**: CLI 인자/토큰 한계 → 파일별 분할 또는 상한 truncate + 사용자 표기.
-- **롤백**: 앱은 로컬 전용이라 상태 롤백 부담 없음. 게시는 사용자 확인 기반이라 자동 부작용 없음.
+- 매일 HH:mm 또는 N시간 간격의 다음 실행 시각을 계산한다.
+- 타이머는 앱이 실행 중일 때만 동작하고, 실행 후 다음 일정을 다시 잡는다.
+- 신규 대기 PR과 리뷰 완료를 알릴 수 있다.
+- 메뉴바 배지는 현재 수집된 대기 PR 수를 표시한다.
+
+### 4.5 로컬 영속성
+
+- 설정: `UserDefaults`
+- 리뷰 히스토리: `Application Support/PRReviewReminder/history.json`
+- 히스토리 식별자: `repository#number@headSha`
+- 같은 식별자의 리뷰는 갱신하고, 다른 SHA는 별도 기록으로 남긴다.
+
+## 5. 아키텍처
+
+```mermaid
+flowchart LR
+    subgraph External["사용자 로컬 CLI / 외부 시스템"]
+        GH["gh CLI<br/>GitHub 조회·게시"]
+        AI["claude / codex CLI<br/>리뷰 초안 생성"]
+    end
+
+    subgraph Core["PRRCore"]
+        Runner["ProcessRunning<br/>SystemProcessRunner"]
+        Services["서비스<br/>GitHub · AI · Feedback<br/>Doctor · Scheduler"]
+        Stores["로컬 저장소<br/>Settings · History"]
+        State["AppState<br/>오케스트레이션·화면 상태"]
+        Views["SwiftUI Views<br/>메뉴 · 상세 · Diff<br/>설정 · 히스토리 · 피드백"]
+    end
+
+    GH <--> Runner
+    AI <--> Runner
+    Runner <--> Services
+    Services <--> State
+    Stores <--> State
+    State <--> Views
+    Views -->|"명시적 게시 액션"| State
+```
+
+의존 방향은 CLI 어댑터 → 서비스 → `AppState` → 뷰다. `AppState`는
+`@MainActor`에서 진단, 수집, 분석, 저장, 스케줄, 게시 흐름을 조율한다.
+서비스의 명령 구성과 파싱은 가능한 한 순수 함수로 유지한다.
+
+## 6. 수용 기준
+
+| ID | 검증 가능한 조건 |
+|---|---|
+| AC1 | 설정을 저장·복원하며 이전 설정의 누락 필드는 기본값으로 채운다. |
+| AC2 | `gh search prs` JSON을 저장소, 번호, 제목, 작성자, URL, 갱신 시각에 정확히 매핑한다. |
+| AC3 | GitHub가 현재 `review-requested:@me`로 반환한 열린 PR을 수집한다. |
+| AC4 | AI의 정상 JSON과 코드 펜스/주변 문장이 포함된 출력을 `Analysis`로 변환한다. |
+| AC5 | 비정형 AI 출력은 원문 summary로 안전하게 폴백한다. |
+| AC6 | 선택한 도구에 맞는 `claude`/`codex` 명령과 언어·가이드라인 포함 프롬프트를 구성한다. |
+| AC7 | 인라인, 요약, 승인, 피드백 이슈 명령을 정확히 구성하며 테스트 중 실행하지 않는다. |
+| AC8 | CLI 설치 및 로그인 상태를 진단한다. |
+| AC9 | 두 스케줄 모드의 다음 실행 시각을 정확히 계산한다. |
+| AC10 | 같은 PR/head SHA 기록을 복원하고 다른 SHA는 별도 히스토리로 유지한다. |
+| AC11 | 히스토리 저장·로드 라운드트립과 토큰·비용 누계를 보존한다. |
+| AC12 | 앱이 SwiftPM으로 빌드되고 테스트되며 `.app` 번들로 조립된다. |
+
+## 7. 검증
+
+```bash
+swift build
+swift test
+./Scripts/build-app.sh
+```
+
+- 모델, 파서, 명령 구성, 스케줄, 저장소는 단위 테스트로 검증한다.
+- 외부 CLI 호출은 `ProcessRunning` 목으로 대체하고 실제 게시를 금지한다.
+- 번들 기동, 메뉴바 표시, 알림 권한, 실제 CLI 로그인 연동은 macOS에서 수동 확인한다.
+
+## 8. 현재 제약과 위험
+
+- 프로세스 러너는 타임아웃·task 취소를 지원하지만 AI 명령의 기본 timeout과
+  사용자가 누르는 취소 UI가 아직 연결되지 않았다.
+- 게시 직전 head SHA를 재검증하지 않아 분석 이후 push된 커밋과 결과가 어긋날 수 있다.
+- 인라인 코멘트는 개별 게시되어 일부 성공 후 실패하거나 재시도 시 중복될 수 있다.
+- 히스토리는 PR 본문과 전체 diff를 평문으로 저장하며 보존 기간·전체 삭제·저장 끄기 정책이 없다.
+- 검색은 최대 100개이고 대규모 조직을 위한 페이지 처리나 조회 최적화가 없다.
+- diff 조회 실패는 빈 diff로 처리되고, AI 입력에서 diff가 잘렸다는 사실은 UI에 표시되지 않는다.
+- Codex는 비용을 보고하지 않으므로 현재 총 토큰만 표시한다.
+- Split diff의 긴 줄은 가로 스크롤 대신 줄바꿈될 수 있다.
+- 스케줄은 앱이 실행 중일 때만 동작한다.
+- Foundation 프로세스 처리와 저장소의 Swift 6 strict concurrency 적합성은 추가 검증이 필요하다.
+
+이 제약의 해결 순서와 커밋 단위는 [`tasks/plan.md`](../tasks/plan.md)에 정의한다.
