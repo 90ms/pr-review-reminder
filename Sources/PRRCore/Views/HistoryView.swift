@@ -3,6 +3,7 @@ import SwiftUI
 public struct HistoryView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.openWindow) private var openWindow
+    @State private var confirmingDeleteAll = false
 
     public init() {}
 
@@ -24,6 +25,25 @@ public struct HistoryView: View {
             }
         }
         .frame(minWidth: 560, minHeight: 480)
+        .toolbar {
+            if !app.historyItems.isEmpty {
+                Button(role: .destructive) {
+                    confirmingDeleteAll = true
+                } label: {
+                    Label(app.l("delete_all_history"), systemImage: "trash")
+                }
+            }
+        }
+        .confirmationDialog(
+            app.l("delete_all_history_confirm"),
+            isPresented: $confirmingDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button(app.l("delete_all_history"), role: .destructive) {
+                app.deleteAllHistory()
+            }
+            Button(app.l("cancel"), role: .cancel) {}
+        }
     }
 
     private var totalsHeader: some View {

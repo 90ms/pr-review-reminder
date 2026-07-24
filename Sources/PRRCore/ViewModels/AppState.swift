@@ -58,17 +58,25 @@ public final class AppState: ObservableObject {
         self.settingsStore = settingsStore
         self.history = history
         self.settings = settingsStore.load()
-        self.historyItems = history.all()
+        self.historyItems = self.settings.historyEnabled ? history.all() : []
         // Start diagnosis and scheduling at launch, not only when the popover opens.
         Task { await self.bootstrap() }
     }
 
     /// Cumulative usage across all recorded reviews.
-    public func historyTotals() -> (tokens: Int, costUSD: Double, count: Int) { history.totals() }
+    public func historyTotals() -> (tokens: Int, costUSD: Double, count: Int) {
+        settings.historyEnabled ? history.totals() : (0, 0, 0)
+    }
 
     public func deleteHistory(id: String) {
         history.delete(id: id)
         historyItems = history.all()
+    }
+
+    public func deleteAllHistory() {
+        history.deleteAll()
+        historyItems = []
+        selectedHistoryID = nil
     }
 
     public var pendingCount: Int { items.count }
@@ -140,6 +148,13 @@ public final class AppState: ObservableObject {
 
     public func saveSettings() {
         settingsStore.save(settings)
+        if settings.historyEnabled {
+            history.applyRetention(days: settings.historyRetentionDays)
+            historyItems = history.all()
+        } else {
+            historyItems = []
+            selectedHistoryID = nil
+        }
         scheduleNextRun()
     }
 
@@ -178,14 +193,16 @@ public final class AppState: ObservableObject {
 
         // Token-free restore: if a stored review matches the PR's current head
         // commit, reuse it instead of spending tokens again. (`github` from above.)
-        for item in items where item.analysis == nil {
-            guard let sha = try? await github.fetchHeadSha(item.pr),
-                  let rec = history.record(repository: item.pr.repository, number: item.pr.number, headSha: sha),
-                  let i = items.firstIndex(where: { $0.id == item.id }) else { continue }
-            items[i].details = rec.details
-            items[i].analysis = rec.analysis
-            items[i].usage = rec.usage
-            items[i].state = .done
+        if settings.historyEnabled {
+            for item in items where item.analysis == nil {
+                guard let sha = try? await github.fetchHeadSha(item.pr),
+                      let rec = history.record(repository: item.pr.repository, number: item.pr.number, headSha: sha),
+                      let i = items.firstIndex(where: { $0.id == item.id }) else { continue }
+                items[i].details = rec.details
+                items[i].analysis = rec.analysis
+                items[i].usage = rec.usage
+                items[i].state = .done
+            }
         }
 
         // Optional: automatically review when enabled in settings.
@@ -235,7 +252,7 @@ public final class AppState: ObservableObject {
                 details = try await github.fetchDetails(pr)
             }
             mutate { $0.details = details }
-            if settings.reviewTokenBudget > 0 {
+            if settings.historyEnabled, settings.reviewTokenBudget > 0 {
                 let used = history.tokenTotal(windowDays: settings.reviewBudgetWindowDays)
                 guard used < settings.reviewTokenBudget else {
                     throw AIError(String(
@@ -255,8 +272,11 @@ public final class AppState: ObservableObject {
                 repository: pr.repository, number: pr.number, title: pr.title, author: pr.author,
                 url: pr.url, headSha: details.headSha, tool: settings.aiTool, reviewedAt: Date(),
                 analysis: analysis, usage: usage, details: details)
-            history.upsert(record)
-            historyItems = history.all()
+            if settings.historyEnabled {
+                history.upsert(record)
+                history.applyRetention(days: settings.historyRetentionDays)
+                historyItems = history.all()
+            }
             if notifyOnComplete, settings.notificationsEnabled {
                 let l = L10n(language: settings.appLanguage)
                 Notifier.notify(title: l("review_done_title"),
