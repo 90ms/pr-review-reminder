@@ -124,10 +124,11 @@ public final class AppState: ObservableObject {
         self.history = history
         self.scheduleRunStore = scheduleRunStore
         self.launchAtLoginManager = launchAtLoginManager
-        self.settings = settingsStore.load()
+        let loadedSettings = settingsStore.load()
+        self.settings = loadedSettings
         self.settingsStorageDiagnostic = settingsStore.diagnostic
         self.historyStorageDiagnostic = history.diagnostic
-        self.historyItems = self.settings.historyEnabled ? history.all() : []
+        self.historyItems = loadedSettings.historyEnabled ? history.all() : []
         self.scheduleRuns = scheduleRunStore.all()
         self.launchAtLoginError = nil
         // Start diagnosis and scheduling at launch, not only when the popover opens.
