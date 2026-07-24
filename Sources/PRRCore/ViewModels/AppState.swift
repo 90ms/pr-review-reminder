@@ -225,6 +225,13 @@ public final class AppState: ObservableObject {
             return
         }
         let github = GitHubService(runner: runner, ghPath: ghPath)
+        do {
+            try await github.requireCurrentHead(details.headSha, for: item.pr)
+        } catch {
+            lastError = "\(error)"
+            return
+        }
+        lastError = nil
         var failures: [String] = []
         for comment in comments {
             do {
@@ -250,10 +257,14 @@ public final class AppState: ObservableObject {
     }
 
     public func postSummaryComment(for item: PRItem, override: String? = nil) async {
-        guard let ghPath else { return }
+        guard let ghPath, let details = item.details else {
+            lastError = "Missing PR details; refresh first."
+            return
+        }
         guard let summary = override ?? item.analysis?.summary else { return }
         let github = GitHubService(runner: runner, ghPath: ghPath)
         do {
+            try await github.requireCurrentHead(details.headSha, for: item.pr)
             try await github.postSummaryComment(summary, on: item.pr)
         } catch {
             lastError = "\(error)"
@@ -261,9 +272,13 @@ public final class AppState: ObservableObject {
     }
 
     public func approve(_ item: PRItem, body: String?) async {
-        guard let ghPath else { return }
+        guard let ghPath, let details = item.details else {
+            lastError = "Missing PR details; refresh first."
+            return
+        }
         let github = GitHubService(runner: runner, ghPath: ghPath)
         do {
+            try await github.requireCurrentHead(details.headSha, for: item.pr)
             try await github.approve(item.pr, body: body)
             items.removeAll { $0.id == item.id }
         } catch {

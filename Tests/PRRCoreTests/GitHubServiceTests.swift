@@ -67,4 +67,31 @@ final class GitHubServiceTests: XCTestCase {
         let approveNoBody = GitHubService.approveCommand(gh: gh, repository: "fastlane-dev/beez", number: 42, body: nil)
         XCTAssertFalse(approveNoBody.arguments.contains("--body"))
     }
+
+    func testRequireCurrentHeadRejectsStaleReview() async throws {
+        let mock = MockProcessRunner()
+        mock.defaultResult = CommandResult(exitCode: 0, stdout: "new-sha\n", stderr: "")
+        let service = GitHubService(runner: mock, ghPath: "/usr/bin/gh")
+        let pr = PullRequest(
+            repository: "fastlane-dev/beez", number: 42, title: "Title",
+            author: "octocat", url: "https://example.com/pr/42")
+
+        do {
+            try await service.requireCurrentHead("old-sha", for: pr)
+            XCTFail("Expected a stale review to be rejected")
+        } catch let error as GitHubError {
+            XCTAssertTrue(error.message.contains("changed"))
+        }
+    }
+
+    func testRequireCurrentHeadAcceptsMatchingReview() async throws {
+        let mock = MockProcessRunner()
+        mock.defaultResult = CommandResult(exitCode: 0, stdout: "same-sha\n", stderr: "")
+        let service = GitHubService(runner: mock, ghPath: "/usr/bin/gh")
+        let pr = PullRequest(
+            repository: "fastlane-dev/beez", number: 42, title: "Title",
+            author: "octocat", url: "https://example.com/pr/42")
+
+        try await service.requireCurrentHead("same-sha", for: pr)
+    }
 }

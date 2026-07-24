@@ -175,6 +175,15 @@ public final class GitHubService: Sendable {
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Prevent publishing an analysis against a different revision than the one
+    /// the user previewed.
+    public func requireCurrentHead(_ expectedHeadSha: String, for pr: PullRequest) async throws {
+        let current = try await fetchHeadSha(pr)
+        guard current == expectedHeadSha else {
+            throw GitHubError("This pull request changed after the review was generated. Run the review again before publishing.")
+        }
+    }
+
     public func fetchDetails(_ pr: PullRequest) async throws -> PRDetails {
         let meta = try await runner.run(Self.detailsCommand(gh: gh, repository: pr.repository, number: pr.number))
         guard meta.succeeded else {
