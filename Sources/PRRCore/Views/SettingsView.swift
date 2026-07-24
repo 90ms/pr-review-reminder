@@ -98,6 +98,13 @@ public struct SettingsView: View {
             Section {
                 Toggle(app.l("enable_notifications"), isOn: $app.settings.notificationsEnabled)
                 Toggle(app.l("auto_review"), isOn: $app.settings.autoReview)
+                Toggle(app.l("launch_at_login"), isOn: $app.settings.launchAtLogin)
+                if let error = app.launchAtLoginError {
+                    Text(String(format: app.l("launch_at_login_failed"), error))
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
             }
 
             Section(app.l("sec_history")) {

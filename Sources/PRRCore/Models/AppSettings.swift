@@ -32,6 +32,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var dailyMinute: Int
     public var intervalHours: Int
     public var notificationsEnabled: Bool
+    public var launchAtLogin: Bool
     /// User-editable prompt template. `{{DIFF}}`, `{{TITLE}}`, `{{BODY}}`, `{{SKILL}}` are substituted.
     public var promptTemplate: String
     /// UI language of the app. `.system` follows the OS locale.
@@ -67,6 +68,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         dailyMinute: Int = 0,
         intervalHours: Int = 4,
         notificationsEnabled: Bool = true,
+        launchAtLogin: Bool = false,
         promptTemplate: String = AppSettings.defaultPromptTemplate,
         appLanguage: AppLanguage = .system,
         reviewLanguage: AppLanguage = .system,
@@ -87,6 +89,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.dailyMinute = dailyMinute
         self.intervalHours = intervalHours
         self.notificationsEnabled = notificationsEnabled
+        self.launchAtLogin = launchAtLogin
         self.promptTemplate = promptTemplate
         self.appLanguage = appLanguage
         self.reviewLanguage = reviewLanguage
@@ -113,6 +116,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         dailyMinute = try c.decodeIfPresent(Int.self, forKey: .dailyMinute) ?? d.dailyMinute
         intervalHours = try c.decodeIfPresent(Int.self, forKey: .intervalHours) ?? d.intervalHours
         notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? d.notificationsEnabled
+        launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         promptTemplate = try c.decodeIfPresent(String.self, forKey: .promptTemplate) ?? d.promptTemplate
         appLanguage = try c.decodeIfPresent(AppLanguage.self, forKey: .appLanguage) ?? d.appLanguage
         reviewLanguage = try c.decodeIfPresent(AppLanguage.self, forKey: .reviewLanguage) ?? d.reviewLanguage

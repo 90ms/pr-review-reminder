@@ -50,11 +50,13 @@ final class SchedulerAndSettingsTests: XCTestCase {
         XCTAssertEqual(store.load().owner, "fastlane-dev")
 
         var s = AppSettings(); s.owner = "acme"; s.aiTool = .codex; s.intervalHours = 12
+        s.launchAtLogin = true
         store.save(s)
         let loaded = store.load()
         XCTAssertEqual(loaded.owner, "acme")
         XCTAssertEqual(loaded.aiTool, .codex)
         XCTAssertEqual(loaded.intervalHours, 12)
+        XCTAssertTrue(loaded.launchAtLogin)
     }
 
     func testCorruptSettingsAreReportedBeforeFallingBackToDefaults() {

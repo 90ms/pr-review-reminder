@@ -81,6 +81,7 @@ public final class AppState: ObservableObject {
     @Published public private(set) var lastRun: Date?
     @Published public private(set) var nextRun: Date?
     @Published public private(set) var scheduleRuns: [ScheduleRunRecord]
+    @Published public private(set) var launchAtLoginError: String?
     @Published public private(set) var lastRefreshDiagnostic: RefreshDiagnostic?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
@@ -100,6 +101,7 @@ public final class AppState: ObservableObject {
     private let settingsStore: SettingsStore
     private let history: HistoryStore
     private let scheduleRunStore: ScheduleRunStore
+    private let launchAtLoginManager: LaunchAtLoginManaging
 
     private var ghPath: String?
     private var claudePath: String?
@@ -114,17 +116,20 @@ public final class AppState: ObservableObject {
                 settingsStore: SettingsStore = SettingsStore(),
                 history: HistoryStore = HistoryStore(),
                 scheduleRunStore: ScheduleRunStore = ScheduleRunStore(),
+                launchAtLoginManager: LaunchAtLoginManaging = LaunchAtLoginService(),
                 autoBootstrap: Bool = true) {
         self.runner = runner
         self.locator = ToolLocator(runner: runner)
         self.settingsStore = settingsStore
         self.history = history
         self.scheduleRunStore = scheduleRunStore
+        self.launchAtLoginManager = launchAtLoginManager
         self.settings = settingsStore.load()
         self.settingsStorageDiagnostic = settingsStore.diagnostic
         self.historyStorageDiagnostic = history.diagnostic
         self.historyItems = self.settings.historyEnabled ? history.all() : []
         self.scheduleRuns = scheduleRunStore.all()
+        self.launchAtLoginError = nil
         // Start diagnosis and scheduling at launch, not only when the popover opens.
         // Tests may opt out to drive lifecycle transitions deterministically.
         if autoBootstrap {
@@ -151,6 +156,12 @@ public final class AppState: ObservableObject {
     }
 
     public var pendingCount: Int { items.count }
+    public var hasActiveOperations: Bool {
+        isRefreshing || updateStage.isBusy || items.contains {
+            if case .loading = $0.state { return true }
+            return $0.detailsState == .loading
+        }
+    }
 
     /// Localization helper bound to the selected app language.
     public var l: L10n { L10n(language: settings.appLanguage) }
@@ -220,6 +231,12 @@ public final class AppState: ObservableObject {
 
     @discardableResult
     public func saveSettings() -> Bool {
+        launchAtLoginError = nil
+        do {
+            try launchAtLoginManager.setEnabled(settings.launchAtLogin)
+        } catch {
+            launchAtLoginError = error.localizedDescription
+        }
         settingsStore.save(settings)
         settingsStorageDiagnostic = settingsStore.diagnostic
         if settings.historyEnabled {
@@ -231,7 +248,7 @@ public final class AppState: ObservableObject {
             selectedHistoryID = nil
         }
         scheduleNextRun()
-        return !settingsStorageDiagnostic.health.isFailure
+        return !settingsStorageDiagnostic.health.isFailure && launchAtLoginError == nil
     }
 
     public func checkForUpdates() async {

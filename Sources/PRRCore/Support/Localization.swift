@@ -200,6 +200,11 @@ public struct L10n: Sendable {
         "scheduled_refresh_succeeded": "%d pull request(s) found",
         "scheduled_refresh_failed": "Scheduled refresh failed",
         "scheduled_refresh_unknown_error": "The refresh failed without an error message.",
+        "launch_at_login": "Launch at login",
+        "launch_at_login_failed": "Could not change login item: %@",
+        "quit_while_busy": "Work is still in progress",
+        "quit_while_busy_help": "Quitting now cancels the active refresh, review, detail load, or update.",
+        "quit_anyway": "Quit anyway",
         // feedback window
         "fb_title": "Title",
         "fb_body": "Details",
@@ -371,6 +376,11 @@ public struct L10n: Sendable {
         "scheduled_refresh_succeeded": "PR %d개 확인",
         "scheduled_refresh_failed": "예약 새로고침 실패",
         "scheduled_refresh_unknown_error": "오류 메시지 없이 새로고침에 실패했습니다.",
+        "launch_at_login": "로그인 시 실행",
+        "launch_at_login_failed": "로그인 항목을 변경하지 못했습니다: %@",
+        "quit_while_busy": "작업이 진행 중입니다",
+        "quit_while_busy_help": "지금 종료하면 진행 중인 새로고침, 리뷰, 상세 조회 또는 업데이트가 취소됩니다.",
+        "quit_anyway": "그래도 종료",
         // feedback window
         "fb_title": "제목",
         "fb_body": "내용",
