@@ -18,7 +18,7 @@ extension PullRequest {
 
 /// Reports the measured height of a view so a container can size to its content.
 struct HeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
