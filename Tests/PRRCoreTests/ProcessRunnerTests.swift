@@ -29,4 +29,41 @@ final class ProcessRunnerTests: XCTestCase {
         let result = try await runner.run("/bin/cat", [], stdin: "hello-stdin")
         XCTAssertEqual(result.stdout, "hello-stdin")
     }
+
+    func testTimeoutTerminatesProcess() async {
+        let runner = SystemProcessRunner(terminationGracePeriod: 0.05)
+
+        do {
+            _ = try await runner.run("/bin/sleep", ["10"], timeout: 0.05)
+            XCTFail("Expected the command to time out")
+        } catch let error as ProcessRunnerError {
+            XCTAssertEqual(error, .timedOut(0.05))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testTaskCancellationTerminatesProcess() async {
+        let runner = SystemProcessRunner(terminationGracePeriod: 0.05)
+        let task = Task {
+            try await runner.run("/bin/sleep", ["10"])
+        }
+
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testCommandDefaultsToNoTimeout() {
+        let command = Command(executable: "/bin/true", arguments: [])
+        XCTAssertNil(command.timeout)
+    }
 }
