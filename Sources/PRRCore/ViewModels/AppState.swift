@@ -32,6 +32,7 @@ public final class AppState: ObservableObject {
     @Published public private(set) var status: DependencyStatus?
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var lastRun: Date?
+    @Published public private(set) var nextRun: Date?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
     /// PR currently shown in the detail window.
@@ -431,6 +432,7 @@ public final class AppState: ObservableObject {
     private func scheduleNextRun() {
         scheduleTimer?.invalidate()
         let next = Scheduler.nextRunDate(after: Date(), settings: settings)
+        nextRun = next
         let interval = max(60, next.timeIntervalSinceNow)
         let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             guard let self else { return }

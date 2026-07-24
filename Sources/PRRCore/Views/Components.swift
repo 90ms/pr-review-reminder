@@ -1,10 +1,14 @@
 import SwiftUI
 
 struct SeverityDot: View {
+    @EnvironmentObject private var app: AppState
     let severity: Severity
     var body: some View {
         let color: Color = severity == .high ? .red : (severity == .medium ? .orange : .secondary)
         Circle().fill(color).frame(width: 7, height: 7)
+            .accessibilityLabel(
+                "\(app.l("severity")): \(app.l("severity_\(severity.rawValue)"))"
+            )
     }
 }
 

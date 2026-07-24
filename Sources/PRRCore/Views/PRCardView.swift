@@ -93,6 +93,7 @@ struct PRCardView: View {
             Spacer()
             Button { app.openInBrowser(item) } label: { Image(systemName: "arrow.up.forward.square") }
                 .buttonStyle(.borderless).help(app.l("open_github"))
+                .accessibilityLabel(app.l("open_github"))
         }
         .font(.caption)
     }
@@ -108,6 +109,7 @@ struct PRCardView: View {
             Spacer()
             Button { app.openInBrowser(item) } label: { Image(systemName: "arrow.up.forward.square") }
                 .buttonStyle(.borderless).help(app.l("open_github"))
+                .accessibilityLabel(app.l("open_github"))
         }
         .font(.caption)
     }

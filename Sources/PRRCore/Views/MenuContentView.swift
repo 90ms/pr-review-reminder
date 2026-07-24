@@ -33,6 +33,7 @@ public struct MenuContentView: View {
                 Button { Task { await app.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless)
                     .help(app.l("refresh"))
+                    .accessibilityLabel(app.l("refresh"))
             }
         }
         .padding(10)
@@ -85,9 +86,17 @@ public struct MenuContentView: View {
         HStack {
             if let error = app.lastError {
                 Text(error).font(.caption2).foregroundStyle(.red).lineLimit(2)
-            } else if let last = app.lastRun {
-                Text("\(app.l("updated")) \(last.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption2).foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 1) {
+                    if let last = app.lastRun {
+                        Text("\(app.l("updated")) \(last.formatted(date: .omitted, time: .shortened))")
+                    }
+                    if let next = app.nextRun {
+                        Text("\(app.l("next_run")) \(next.formatted(date: .omitted, time: .shortened))")
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
             Spacer()
             Button(app.l("history")) {

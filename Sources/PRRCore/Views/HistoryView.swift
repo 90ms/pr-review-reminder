@@ -104,14 +104,17 @@ public struct HistoryView: View {
                 } label: { Image(systemName: "arrow.up.forward.square") }
                     .buttonStyle(.borderless)
                     .help(app.l("open_github"))
+                    .accessibilityLabel(app.l("open_github"))
                 Button {
                     app.selectHistory(rec)
                     openWindow(id: "history-detail")
                 } label: { Image(systemName: "doc.text.magnifyingglass") }
                     .buttonStyle(.borderless)
                     .help(app.l("view_detail"))
+                    .accessibilityLabel(app.l("view_detail"))
                 Button(role: .destructive) { app.deleteHistory(id: rec.id) } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel(app.l("delete"))
             }
         }
     }
