@@ -235,6 +235,17 @@ public final class AppState: ObservableObject {
                 details = try await github.fetchDetails(pr)
             }
             mutate { $0.details = details }
+            if settings.reviewTokenBudget > 0 {
+                let used = history.tokenTotal(windowDays: settings.reviewBudgetWindowDays)
+                guard used < settings.reviewTokenBudget else {
+                    throw AIError(String(
+                        format: l("review_budget_exceeded"),
+                        used.formatted(.number),
+                        settings.reviewTokenBudget.formatted(.number),
+                        settings.reviewBudgetWindowDays
+                    ))
+                }
+            }
             let (analysis, usage) = try await ai.analyze(
                 title: pr.title, body: details.body, diff: details.diff, settings: settings
             )

@@ -17,6 +17,16 @@ final class HistoryStoreTests: XCTestCase {
             details: PRDetails(body: "b", headSha: sha, additions: 1, deletions: 0, diff: "d"))
     }
 
+    func testTokenTotalUsesRollingWindow() {
+        let persistence = MemPersistence()
+        let store = HistoryStore(persistence: persistence)
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        store.upsert(record("o/r", 1, "old", tokens: 100, cost: 0, at: now.addingTimeInterval(-40 * 86_400).timeIntervalSince1970))
+        store.upsert(record("o/r", 2, "new", tokens: 250, cost: 0, at: now.addingTimeInterval(-2 * 86_400).timeIntervalSince1970))
+        XCTAssertEqual(store.tokenTotal(windowDays: 30, now: now), 250)
+        XCTAssertEqual(store.tokenTotal(windowDays: 0, now: now), 350)
+    }
+
     // AC16 — same id replaces, different SHA adds.
     func testUpsertReplaceVsAdd() {
         let store = HistoryStore(persistence: MemPersistence())

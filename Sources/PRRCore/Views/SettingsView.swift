@@ -38,6 +38,25 @@ public struct SettingsView: View {
                 Picker(app.l("tool"), selection: $app.settings.aiTool) {
                     ForEach(AITool.allCases) { Text($0.displayName).tag($0) }
                 }.pickerStyle(.segmented)
+                if app.settings.aiTool == .codex {
+                    TextField(app.l("codex_input_price"), value: $app.settings.codexInputPricePerMillion, format: .number)
+                    TextField(app.l("codex_output_price"), value: $app.settings.codexOutputPricePerMillion, format: .number)
+                    Text(app.l("codex_price_help"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section(app.l("sec_budget")) {
+                TextField(app.l("token_budget"), value: $app.settings.reviewTokenBudget, format: .number)
+                Stepper(
+                    String(format: app.l("budget_window_days"), app.settings.reviewBudgetWindowDays),
+                    value: $app.settings.reviewBudgetWindowDays,
+                    in: 1...365
+                )
+                Text(app.l("budget_help"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Section(app.l("sec_schedule")) {

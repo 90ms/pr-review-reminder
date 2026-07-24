@@ -106,6 +106,19 @@ public final class HistoryStore: @unchecked Sendable {
         return (tokens, cost, records.count)
     }
 
+    /// Tokens recorded in a rolling local window. Records without usage do not
+    /// count; a non-positive window includes all retained history.
+    public func tokenTotal(windowDays: Int, now: Date = Date()) -> Int {
+        let cutoff = windowDays > 0
+            ? Calendar(identifier: .gregorian).date(byAdding: .day, value: -windowDays, to: now)
+            : nil
+        return records.reduce(into: 0) { total, record in
+            if cutoff == nil || record.reviewedAt >= cutoff! {
+                total += record.usage?.tokens ?? 0
+            }
+        }
+    }
+
     private func persist() {
         if let data = try? Self.encoder.encode(records) {
             persistence.write(data)

@@ -35,6 +35,10 @@ final class ModelTests: XCTestCase {
         settings.aiTool = .codex
         settings.scheduleMode = .everyNHours
         settings.intervalHours = 6
+        settings.codexInputPricePerMillion = 2.5
+        settings.codexOutputPricePerMillion = 10
+        settings.reviewTokenBudget = 100_000
+        settings.reviewBudgetWindowDays = 7
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
         XCTAssertEqual(settings, decoded)

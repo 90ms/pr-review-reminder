@@ -51,6 +51,14 @@ public struct AppSettings: Sendable, Codable, Equatable {
     /// Number of days to retain history. Zero keeps records until manually
     /// deleted.
     public var historyRetentionDays: Int
+    /// Codex price estimates in USD per one million tokens. Codex CLI only
+    /// reports a total, so the input/output split is estimated locally.
+    public var codexInputPricePerMillion: Double
+    public var codexOutputPricePerMillion: Double
+    /// Maximum tokens consumed by locally recorded reviews during the rolling
+    /// window. Zero disables the budget guard.
+    public var reviewTokenBudget: Int
+    public var reviewBudgetWindowDays: Int
 
     public init(
         owner: String = "fastlane-dev",
@@ -68,7 +76,11 @@ public struct AppSettings: Sendable, Codable, Equatable {
         feedbackRepository: String = "",
         autoReview: Bool = false,
         historyEnabled: Bool = true,
-        historyRetentionDays: Int = 0
+        historyRetentionDays: Int = 0,
+        codexInputPricePerMillion: Double = 0,
+        codexOutputPricePerMillion: Double = 0,
+        reviewTokenBudget: Int = 0,
+        reviewBudgetWindowDays: Int = 30
     ) {
         self.owner = owner
         self.repositories = repositories
@@ -86,6 +98,10 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.autoReview = autoReview
         self.historyEnabled = historyEnabled
         self.historyRetentionDays = historyRetentionDays
+        self.codexInputPricePerMillion = codexInputPricePerMillion
+        self.codexOutputPricePerMillion = codexOutputPricePerMillion
+        self.reviewTokenBudget = reviewTokenBudget
+        self.reviewBudgetWindowDays = reviewBudgetWindowDays
     }
 
     // Tolerant decoding: missing keys (e.g. from an older saved schema) fall back
@@ -109,6 +125,10 @@ public struct AppSettings: Sendable, Codable, Equatable {
         autoReview = try c.decodeIfPresent(Bool.self, forKey: .autoReview) ?? d.autoReview
         historyEnabled = try c.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? d.historyEnabled
         historyRetentionDays = try c.decodeIfPresent(Int.self, forKey: .historyRetentionDays) ?? d.historyRetentionDays
+        codexInputPricePerMillion = try c.decodeIfPresent(Double.self, forKey: .codexInputPricePerMillion) ?? d.codexInputPricePerMillion
+        codexOutputPricePerMillion = try c.decodeIfPresent(Double.self, forKey: .codexOutputPricePerMillion) ?? d.codexOutputPricePerMillion
+        reviewTokenBudget = try c.decodeIfPresent(Int.self, forKey: .reviewTokenBudget) ?? d.reviewTokenBudget
+        reviewBudgetWindowDays = try c.decodeIfPresent(Int.self, forKey: .reviewBudgetWindowDays) ?? d.reviewBudgetWindowDays
     }
 
     public static let defaultPromptTemplate = """

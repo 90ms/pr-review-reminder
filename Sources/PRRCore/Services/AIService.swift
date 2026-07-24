@@ -174,6 +174,31 @@ public final class AIService: Sendable {
         return AIUsage(totalTokens: total)
     }
 
+    /// Adds a local Codex cost estimate. Codex CLI reports only total tokens, so
+    /// input tokens are approximated from prompt UTF-8 bytes (four bytes/token)
+    /// and the remaining reported tokens are treated as output/reasoning.
+    public static func estimateCodexCost(
+        usage: AIUsage?,
+        prompt: String,
+        inputPricePerMillion: Double,
+        outputPricePerMillion: Double
+    ) -> AIUsage? {
+        guard let usage, let total = usage.totalTokens else { return usage }
+        let input = min(total, max(0, (prompt.utf8.count + 3) / 4))
+        let output = max(0, total - input)
+        let inputPrice = max(0, inputPricePerMillion)
+        let outputPrice = max(0, outputPricePerMillion)
+        let cost: Double? = inputPrice > 0 || outputPrice > 0
+            ? (Double(input) * inputPrice + Double(output) * outputPrice) / 1_000_000
+            : nil
+        return AIUsage(
+            inputTokens: input,
+            outputTokens: output,
+            totalTokens: total,
+            costUSD: cost
+        )
+    }
+
     // MARK: - Async operation
 
     public func analyze(title: String, body: String, diff: String, settings: AppSettings) async throws -> (analysis: Analysis, usage: AIUsage?) {
@@ -184,7 +209,15 @@ public final class AIService: Sendable {
             languageDirective: settings.reviewLanguage.promptDirective(),
             maxDiffChars: maxDiffChars
         )
-        let (text, usage) = try await completeText(prompt: prompt, tool: settings.aiTool)
+        let (text, rawUsage) = try await completeText(prompt: prompt, tool: settings.aiTool)
+        let usage = settings.aiTool == .codex
+            ? Self.estimateCodexCost(
+                usage: rawUsage,
+                prompt: prompt,
+                inputPricePerMillion: settings.codexInputPricePerMillion,
+                outputPricePerMillion: settings.codexOutputPricePerMillion
+            )
+            : rawUsage
         return (Self.parseAnalysis(text), usage)
     }
 

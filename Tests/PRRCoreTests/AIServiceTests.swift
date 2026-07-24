@@ -87,6 +87,28 @@ final class AIServiceTests: XCTestCase {
         XCTAssertNil(AIService.parseCodexUsage("no usage here"))
     }
 
+    func testEstimateCodexCostUsesPromptApproximationAndConfiguredPrices() {
+        let usage = AIService.estimateCodexCost(
+            usage: AIUsage(totalTokens: 1_000),
+            prompt: String(repeating: "a", count: 400),
+            inputPricePerMillion: 2,
+            outputPricePerMillion: 10
+        )
+        XCTAssertEqual(usage?.inputTokens, 100)
+        XCTAssertEqual(usage?.outputTokens, 900)
+        XCTAssertEqual(usage?.costUSD ?? -1, 0.0092, accuracy: 0.000_001)
+    }
+
+    func testEstimateCodexCostLeavesCostUnknownWhenPricesUnset() {
+        let usage = AIService.estimateCodexCost(
+            usage: AIUsage(totalTokens: 10),
+            prompt: "abcd",
+            inputPricePerMillion: -1,
+            outputPricePerMillion: -1
+        )
+        XCTAssertNil(usage?.costUSD)
+    }
+
     func testUsageLabel() {
         XCTAssertEqual(AIUsage(totalTokens: 1234, costUSD: 0.05).label(), "1,234 tokens · $0.0500")
         XCTAssertEqual(AIUsage(totalTokens: 34772).label(), "34,772 tokens")
