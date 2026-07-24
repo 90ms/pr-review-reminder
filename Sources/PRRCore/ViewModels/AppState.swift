@@ -52,7 +52,8 @@ public final class AppState: ObservableObject {
 
     public init(runner: ProcessRunning = SystemProcessRunner(),
                 settingsStore: SettingsStore = SettingsStore(),
-                history: HistoryStore = HistoryStore()) {
+                history: HistoryStore = HistoryStore(),
+                autoBootstrap: Bool = true) {
         self.runner = runner
         self.locator = ToolLocator(runner: runner)
         self.settingsStore = settingsStore
@@ -60,7 +61,10 @@ public final class AppState: ObservableObject {
         self.settings = settingsStore.load()
         self.historyItems = self.settings.historyEnabled ? history.all() : []
         // Start diagnosis and scheduling at launch, not only when the popover opens.
-        Task { await self.bootstrap() }
+        // Tests may opt out to drive lifecycle transitions deterministically.
+        if autoBootstrap {
+            Task { await self.bootstrap() }
+        }
     }
 
     /// Cumulative usage across all recorded reviews.

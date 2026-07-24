@@ -1,0 +1,221 @@
+import XCTest
+@testable import PRRCore
+
+private final class AppStateMemoryKeyValueStore: KeyValueStore {
+    var values: [String: Data] = [:]
+    func data(forKey defaultName: String) -> Data? { values[defaultName] }
+    func set(_ value: Any?, forKey defaultName: String) {
+        values[defaultName] = value as? Data
+    }
+}
+
+private final class AppStateMemoryHistoryPersistence: HistoryPersisting, @unchecked Sendable {
+    var data: Data?
+    func read() -> Data? { data }
+    func write(_ data: Data) { self.data = data }
+}
+
+@MainActor
+final class AppStateTests: XCTestCase {
+    private let executable = "/usr/bin/true"
+
+    private func makeState(
+        settings: AppSettings = AppSettings(notificationsEnabled: false),
+        history: HistoryStore = HistoryStore(persistence: AppStateMemoryHistoryPersistence()),
+        responder: @escaping @Sendable (Command) -> CommandResult
+    ) async -> (AppState, MockProcessRunner) {
+        let keyValues = AppStateMemoryKeyValueStore()
+        let settingsStore = SettingsStore(store: keyValues, key: "test.settings")
+        settingsStore.save(settings)
+        let runner = MockProcessRunner()
+        runner.responder = { [executable] command in
+            if command.executable == "/bin/zsh", command.arguments.first == "-lc" {
+                return CommandResult(exitCode: 0, stdout: "\(executable)\n", stderr: "")
+            }
+            if command.arguments == ["auth", "status"] {
+                return CommandResult(exitCode: 0, stdout: "", stderr: "")
+            }
+            if command.arguments == ["api", "user", "--jq", ".login"] {
+                return CommandResult(exitCode: 0, stdout: "reviewer\n", stderr: "")
+            }
+            return responder(command)
+        }
+        let state = AppState(
+            runner: runner,
+            settingsStore: settingsStore,
+            history: history,
+            autoBootstrap: false
+        )
+        await state.diagnose()
+        return (state, runner)
+    }
+
+    nonisolated private static func searchJSON(title: String = "Test PR") -> String {
+        """
+        [{
+          "number": 42,
+          "title": "\(title)",
+          "url": "https://example.test/pull/42",
+          "updatedAt": "2026-07-24T00:00:00Z",
+          "author": {"login": "author"},
+          "repository": {"nameWithOwner": "acme/widgets"}
+        }]
+        """
+    }
+
+    nonisolated private static func detailsJSON(sha: String) -> String {
+        """
+        {"body":"PR body","headRefOid":"\(sha)","additions":2,"deletions":1}
+        """
+    }
+
+    private func record(sha: String, tokens: Int = 20) -> ReviewRecord {
+        ReviewRecord(
+            repository: "acme/widgets",
+            number: 42,
+            title: "Cached PR",
+            author: "author",
+            url: "https://example.test/pull/42",
+            headSha: sha,
+            tool: .claude,
+            reviewedAt: Date(),
+            analysis: Analysis(summary: "cached analysis"),
+            usage: AIUsage(totalTokens: tokens),
+            details: PRDetails(
+                body: "cached body",
+                headSha: sha,
+                additions: 2,
+                deletions: 1,
+                diff: "cached diff"
+            )
+        )
+    }
+
+    func testRefreshPopulatesAwaitingPullRequests() async {
+        let (state, _) = await makeState { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "uncached-sha\n", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refresh()
+
+        XCTAssertEqual(state.items.map(\.id), ["acme/widgets#42"])
+        XCTAssertEqual(state.items.first?.state, .idle)
+        XCTAssertNil(state.lastError)
+        XCTAssertNotNil(state.lastRun)
+        XCTAssertFalse(state.isRefreshing)
+    }
+
+    func testRefreshRestoresMatchingHistoryWithoutRunningAI() async {
+        let history = HistoryStore(persistence: AppStateMemoryHistoryPersistence())
+        history.upsert(record(sha: "cached-sha"))
+        let (state, runner) = await makeState(history: history) { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "cached-sha\n", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refresh()
+
+        XCTAssertEqual(state.items.first?.analysis?.summary, "cached analysis")
+        XCTAssertEqual(state.items.first?.details?.diff, "cached diff")
+        XCTAssertEqual(state.items.first?.state, .done)
+        XCTAssertFalse(runner.commands.contains { $0.arguments.first == "-p" })
+    }
+
+    func testReviewSuccessUpdatesItemAndHistory() async {
+        let history = HistoryStore(persistence: AppStateMemoryHistoryPersistence())
+        let (state, runner) = await makeState(history: history) { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "new-sha\n", stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(exitCode: 0, stdout: Self.detailsJSON(sha: "new-sha"), stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "diff"] {
+                return CommandResult(exitCode: 0, stdout: "diff --git a/a b/a", stderr: "")
+            }
+            if command.arguments.first == "-p" {
+                let wrapper = #"{"result":"{\"summary\":\"looks good\",\"reviewPoints\":[],\"inlineComments\":[]}","total_cost_usd":0.01,"usage":{"input_tokens":10,"output_tokens":5}}"#
+                return CommandResult(exitCode: 0, stdout: wrapper, stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refresh()
+        await state.review("acme/widgets#42", notifyOnComplete: false)
+
+        XCTAssertEqual(state.items.first?.state, .done)
+        XCTAssertEqual(state.items.first?.analysis?.summary, "looks good")
+        XCTAssertEqual(state.items.first?.usage?.tokens, 15)
+        XCTAssertEqual(history.all().first?.headSha, "new-sha")
+        XCTAssertTrue(runner.commands.contains { $0.arguments.first == "-p" })
+    }
+
+    func testReviewBudgetBlockFailsBeforeInvokingAI() async {
+        var settings = AppSettings(notificationsEnabled: false)
+        settings.reviewTokenBudget = 20
+        settings.reviewBudgetWindowDays = 30
+        let history = HistoryStore(persistence: AppStateMemoryHistoryPersistence())
+        history.upsert(record(sha: "old-sha", tokens: 20))
+        let (state, runner) = await makeState(settings: settings, history: history) { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "new-sha\n", stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(exitCode: 0, stdout: Self.detailsJSON(sha: "new-sha"), stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "diff"] {
+                return CommandResult(exitCode: 0, stdout: "diff", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refresh()
+        await state.review("acme/widgets#42", notifyOnComplete: false)
+
+        guard case let .failed(message) = state.items.first?.state else {
+            return XCTFail("Expected review to fail when the local budget is exhausted")
+        }
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertFalse(runner.commands.contains { $0.arguments.first == "-p" })
+        XCTAssertEqual(history.all().count, 1)
+    }
+
+    func testSummaryPublishRejectsStaleHeadBeforePosting() async {
+        let (state, runner) = await makeState { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "newer-sha\n", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+        await state.refresh()
+        var item = state.items[0]
+        item.details = PRDetails(
+            body: "", headSha: "reviewed-sha", additions: 1, deletions: 0, diff: "diff")
+        item.analysis = Analysis(summary: "summary")
+
+        await state.postSummaryComment(for: item)
+
+        XCTAssertTrue(state.lastError?.contains("changed") == true)
+        XCTAssertFalse(runner.commands.contains { $0.arguments.prefix(2) == ["pr", "comment"] })
+    }
+}
