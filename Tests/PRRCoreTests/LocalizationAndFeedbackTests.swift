@@ -26,6 +26,8 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         XCTAssertEqual(ko("diff_split"), "분할")
         XCTAssertEqual(ko("tokens_unit"), "토큰")
         XCTAssertEqual(en("diff_unified"), "Unified")
+        XCTAssertEqual(ko("detail_review"), "리뷰")
+        XCTAssertEqual(en("detail_side_by_side"), "Side by side")
         // missing key returns the key itself
         XCTAssertEqual(ko("__no_such_key__"), "__no_such_key__")
     }

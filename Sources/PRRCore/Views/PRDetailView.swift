@@ -8,6 +8,15 @@ public struct PRDetailView: View {
     @State private var loadedFor: String?
     @State private var pending: PendingAction?
     @State private var approveBody = ""
+    @State private var layout: DetailLayout = .review
+
+    private enum DetailLayout: String, CaseIterable, Identifiable {
+        case review
+        case changes
+        case sideBySide
+
+        var id: String { rawValue }
+    }
 
     enum PendingAction: Identifiable {
         case inline([InlineComment])
@@ -42,16 +51,44 @@ public struct PRDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             header(item)
             Divider()
-            HSplitView {
+            layoutPicker
+            Divider()
+            switch layout {
+            case .review:
                 analysisPane(item)
-                    .frame(minWidth: 320)
+            case .changes:
                 diffPane(item)
-                    .frame(minWidth: 320)
+            case .sideBySide:
+                HSplitView {
+                    analysisPane(item)
+                        .frame(minWidth: 320)
+                    diffPane(item)
+                        .frame(minWidth: 320)
+                }
             }
         }
         .onAppear { syncComments(item); Task { await app.ensureDetails(item.id) } }
         .onChange(of: item.id) { syncComments(item); Task { await app.ensureDetails(item.id) } }
         .onChange(of: item.analysis) { syncComments(item) }
+    }
+
+    private var layoutPicker: some View {
+        HStack {
+            Picker(app.l("detail_layout"), selection: $layout) {
+                Label(app.l("detail_review"), systemImage: "text.bubble")
+                    .tag(DetailLayout.review)
+                Label(app.l("detail_changes"), systemImage: "doc.text.magnifyingglass")
+                    .tag(DetailLayout.changes)
+                Label(app.l("detail_side_by_side"), systemImage: "rectangle.split.2x1")
+                    .tag(DetailLayout.sideBySide)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 360)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private func syncComments(_ item: PRItem) {
