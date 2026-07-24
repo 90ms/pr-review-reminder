@@ -37,4 +37,15 @@ public struct ReviewRecord: Sendable, Codable, Equatable, Identifiable {
     public static func id(repository: String, number: Int, headSha: String) -> String {
         "\(repository)#\(number)@\(headSha)"
     }
+
+    /// Minimal live PR identity used when starting a fresh review from history.
+    public var pullRequest: PullRequest {
+        PullRequest(
+            repository: repository,
+            number: number,
+            title: title,
+            author: author,
+            url: url
+        )
+    }
 }

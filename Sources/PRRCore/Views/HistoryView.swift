@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct HistoryView: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.openWindow) private var openWindow
 
     public init() {}
 
@@ -82,6 +83,13 @@ public struct HistoryView: View {
                     if let url = URL(string: rec.url) { NSWorkspace.shared.open(url) }
                 } label: { Image(systemName: "arrow.up.forward.square") }
                     .buttonStyle(.borderless)
+                    .help(app.l("open_github"))
+                Button {
+                    app.selectHistory(rec)
+                    openWindow(id: "history-detail")
+                } label: { Image(systemName: "doc.text.magnifyingglass") }
+                    .buttonStyle(.borderless)
+                    .help(app.l("view_detail"))
                 Button(role: .destructive) { app.deleteHistory(id: rec.id) } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless)
             }
