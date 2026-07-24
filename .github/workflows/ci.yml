@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build, test, and validate app bundle
+    runs-on: macos-14
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Assemble application bundle
+        run: ./Scripts/build-app.sh
+
+      - name: Validate application bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/PR Review Reminder.app"
+          test -x "$app/Contents/MacOS/PRReviewReminder"
+          test -f "$app/Contents/PkgInfo"
+          plutil -lint "$app/Contents/Info.plist"
+          test "$(defaults read "$PWD/$app/Contents/Info" CFBundleIdentifier)" = "kr.fastlane.prreviewreminder"
