@@ -292,6 +292,7 @@ public final class AppState: ObservableObject {
                 updateAvailable: false
             )
             updateStage = .restartRequired
+            await restartAfterUpdate()
         } catch is CancellationError {
             updateStage = .cancelled
         } catch {
@@ -324,7 +325,13 @@ public final class AppState: ObservableObject {
     }
 
     public func restartAfterUpdate() async {
-        guard updateStage == .restartRequired else { return }
+        let canRetryRestart: Bool
+        if case let .failed(operation, _) = updateStage {
+            canRetryRestart = operation == .restartApplication
+        } else {
+            canRetryRestart = false
+        }
+        guard updateStage == .restartRequired || canRetryRestart else { return }
         updateStage = .restarting
         do {
             try await HomebrewUpdateService(runner: runner).launchUpdatedApplication(

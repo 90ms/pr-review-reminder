@@ -182,6 +182,11 @@ public struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                    if operation == .restartApplication {
+                        Button(app.l("restart_now")) {
+                            Task { await app.restartAfterUpdate() }
+                        }
+                    }
                 } else if app.updateStage == .restartRequired {
                     Text(app.l("update_restart"))
                         .font(.caption)

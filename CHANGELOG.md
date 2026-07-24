@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Successful in-app Homebrew updates now launch the updated application and
+  terminate the old instance automatically, while retaining a manual retry when
+  relaunch fails.
+
 ## [0.3.0] - 2026-07-24
 
 ### Added
