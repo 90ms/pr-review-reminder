@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Public repository community health files and macOS continuous integration.
+- History detail/diff viewing, current-head re-review, retention, opt-out, and delete-all controls.
+- Configurable Codex cost estimates and a rolling local review-token budget.
+- Bundled application icon and localized diff/usage labels.
+- Process timeouts and cancellation support for external commands.
+
+### Changed
+
+- Long diff lines use horizontal scrolling.
+- Inline comments and optional approval are submitted as one GitHub review.
+- Window titles react to the selected application language.
+
+### Fixed
+
+- Renewed GitHub review requests are no longer hidden by an older review.
+- Publishing is blocked when the PR head changed after analysis.
 
 ## [0.1.0] - 2026-07-24
 
