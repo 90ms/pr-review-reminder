@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "harnessVersion": "0.1.0",
+  "preset": "base",
+  "managedFiles": {
+    ".harness/generated/AGENTS.md": "e744274fecb77fdf2a33d0af29f64084b99ee3c88eb48c37abf5052484f69ced"
+  },
+  "createdAt": "2026-07-24T01:33:17.154Z",
+  "updatedAt": "2026-07-24T01:33:17.154Z"
+}

@@ -1,0 +1,230 @@
+import Foundation
+
+public enum AppLanguage: String, Sendable, Codable, CaseIterable, Identifiable {
+    case system
+    case korean
+    case english
+
+    public var id: String { rawValue }
+
+    /// Resolves to a concrete language code ("ko"/"en"). `.system` follows the
+    /// provided locale (defaults to the current locale).
+    public func resolved(locale: Locale = .current) -> String {
+        switch self {
+        case .korean: return "ko"
+        case .english: return "en"
+        case .system:
+            let code = locale.language.languageCode?.identifier ?? "en"
+            return code == "ko" ? "ko" : "en"
+        }
+    }
+
+    /// Instruction appended to AI prompts to control review output language.
+    public func promptDirective(locale: Locale = .current) -> String {
+        resolved(locale: locale) == "ko"
+            ? "Write the summary, reviewPoints, and inlineComments in Korean."
+            : "Write the summary, reviewPoints, and inlineComments in English."
+    }
+}
+
+/// Minimal in-code localization. Returns the key itself when a string is missing
+/// so a forgotten key is visible rather than crashing.
+public struct L10n: Sendable {
+    public let code: String   // "ko" or "en"
+
+    public init(language: AppLanguage, locale: Locale = .current) {
+        self.code = language.resolved(locale: locale)
+    }
+
+    public func callAsFunction(_ key: String) -> String {
+        Self.table[code]?[key] ?? Self.en[key] ?? key
+    }
+
+    static let en: [String: String] = [
+        "refresh": "Refresh now",
+        "setup_needed": "Setup needed",
+        "nothing_awaiting": "Nothing awaiting your review.",
+        "no_data": "No data yet — hit refresh.",
+        "updated": "Updated",
+        "settings": "Settings",
+        "quit": "Quit",
+        "feedback": "Leave feedback",
+        "analyzing": "Analyzing…",
+        "queued": "Queued",
+        "analysis_failed": "Analysis failed",
+        "review_points": "Review points",
+        "inline_comments": "Inline comments",
+        "post_comments": "Post comments",
+        "summary": "Summary",
+        "approve": "Approve",
+        "open_github": "Open on GitHub",
+        "view_detail": "Details",
+        "run_review": "Run code review",
+        "retry": "Retry",
+        "not_reviewed": "Not reviewed yet.",
+        "auto_review": "Auto-review PRs when found",
+        "prompt_help": "Instruction sent to the AI. {{TITLE}}, {{BODY}}, {{DIFF}}, {{SKILL}} are replaced with real values.",
+        "skill_help": "Extra reviewer rules/guidelines injected into the prompt at {{SKILL}}.",
+        "diff": "Diff",
+        "pr_detail": "Pull request",
+        "some_failed": "Some comments failed to post:",
+        "submit": "Submit",
+        "cancel": "Cancel",
+        "preview_inline": "These inline comments will be posted:",
+        "preview_summary": "This summary will be posted as a comment:",
+        "preview_approve": "This pull request will be approved.",
+        "approve_body_ph": "Approval comment (optional)",
+        "caution_high": "⚠️ %d high-severity review point(s) found — approve anyway?",
+        "no_high": "No high-severity review points.",
+        "target": "Target",
+        "posting": "Posting…",
+        "review_done_title": "Review complete",
+        "review_done_body": "Review finished for %@",
+        "post_and_approve": "Comment & approve",
+        "approve_after_comments_body": "Left a few comments, but they're non-blocking — safe to merge. Approving.",
+        "history": "History",
+        "history_empty": "No reviews recorded yet.",
+        "total_usage": "Total usage",
+        "reviews_count": "%d reviews",
+        "delete": "Delete",
+        "restored": "Restored from history (no tokens used)",
+        // settings
+        "sec_github": "GitHub",
+        "owner": "Owner / org",
+        "repos_ph": "Repos (comma-separated, empty = all)",
+        "sec_ai": "AI tool",
+        "tool": "Tool",
+        "sec_schedule": "Schedule",
+        "mode": "Mode",
+        "daily_at": "Daily at",
+        "every_n": "Every N hours",
+        "hour": "Hour",
+        "minute": "Min",
+        "every_h": "Every %d h",
+        "sec_lang": "Language",
+        "app_language": "App language",
+        "review_language": "Review language",
+        "lang_system": "System",
+        "lang_korean": "한국어",
+        "lang_english": "English",
+        "enable_notifications": "Enable notifications",
+        "sec_prompt": "Prompt template",
+        "sec_skill": "Review skill / guidelines",
+        "load_file": "Load from file…",
+        "clear": "Clear",
+        "sec_deps": "Dependencies",
+        "recheck": "Re-check",
+        "gh_installed": "gh installed",
+        "gh_authed": "gh authenticated",
+        "claude_cli": "claude CLI",
+        "codex_cli": "codex CLI",
+        "sec_feedback": "Feedback",
+        "feedback_repo": "Feedback repository (owner/repo)",
+        "save": "Save",
+        "not_checked": "Not checked yet.",
+        // feedback window
+        "fb_title": "Title",
+        "fb_body": "Details",
+        "fb_tidy": "Tidy with agent",
+        "fb_submit": "Submit as issue",
+        "fb_cancel": "Cancel",
+        "fb_preview": "Command preview (not executed)",
+        "fb_hold": "Feedback repository is not set — registration is on hold. The command that would run is shown below.",
+        "fb_tidying": "Tidying…",
+    ]
+
+    static let ko: [String: String] = [
+        "refresh": "지금 새로고침",
+        "setup_needed": "설정 필요",
+        "nothing_awaiting": "리뷰 대기 중인 PR이 없습니다.",
+        "no_data": "아직 데이터 없음 — 새로고침하세요.",
+        "updated": "업데이트",
+        "settings": "설정",
+        "quit": "종료",
+        "feedback": "의견 남기기",
+        "analyzing": "분석 중…",
+        "queued": "대기 중",
+        "analysis_failed": "분석 실패",
+        "review_points": "리뷰 포인트",
+        "inline_comments": "인라인 코멘트",
+        "post_comments": "코멘트 등록",
+        "summary": "요약",
+        "approve": "승인",
+        "open_github": "GitHub에서 열기",
+        "view_detail": "자세히 보기",
+        "run_review": "코드 리뷰",
+        "retry": "다시 시도",
+        "not_reviewed": "아직 리뷰하지 않음.",
+        "auto_review": "PR 발견 시 자동 코드리뷰",
+        "prompt_help": "AI에게 보내는 지시문. {{TITLE}}, {{BODY}}, {{DIFF}}, {{SKILL}}가 실제 값으로 치환됩니다.",
+        "skill_help": "프롬프트의 {{SKILL}} 위치에 주입되는 추가 리뷰 규칙/가이드라인입니다.",
+        "diff": "변경 내용",
+        "pr_detail": "풀 리퀘스트",
+        "some_failed": "일부 코멘트 등록 실패:",
+        "submit": "제출",
+        "cancel": "취소",
+        "preview_inline": "다음 인라인 코멘트가 등록됩니다:",
+        "preview_summary": "다음 요약이 코멘트로 등록됩니다:",
+        "preview_approve": "이 풀 리퀘스트를 승인합니다.",
+        "approve_body_ph": "승인 코멘트 (선택)",
+        "caution_high": "⚠️ 높은 심각도 리뷰 포인트 %d건 — 그래도 승인할까요?",
+        "no_high": "높은 심각도 리뷰 포인트 없음.",
+        "target": "대상",
+        "posting": "등록 중…",
+        "review_done_title": "리뷰 완료",
+        "review_done_body": "%@ 리뷰가 완료됐습니다.",
+        "post_and_approve": "코멘트 남기고 승인",
+        "approve_after_comments_body": "코멘트를 남겼지만 머지되어도 문제없는 내용입니다. 승인합니다.",
+        "history": "히스토리",
+        "history_empty": "저장된 리뷰 기록이 없습니다.",
+        "total_usage": "누적 사용량",
+        "reviews_count": "리뷰 %d건",
+        "delete": "삭제",
+        "restored": "히스토리에서 복원됨 (토큰 미사용)",
+        // settings
+        "sec_github": "GitHub",
+        "owner": "Owner / org",
+        "repos_ph": "레포 (쉼표 구분, 비우면 전체)",
+        "sec_ai": "AI 도구",
+        "tool": "도구",
+        "sec_schedule": "스케줄",
+        "mode": "방식",
+        "daily_at": "매일 지정 시각",
+        "every_n": "N시간 간격",
+        "hour": "시",
+        "minute": "분",
+        "every_h": "%d시간마다",
+        "sec_lang": "언어",
+        "app_language": "앱 언어",
+        "review_language": "리뷰 언어",
+        "lang_system": "시스템",
+        "lang_korean": "한국어",
+        "lang_english": "English",
+        "enable_notifications": "알림 사용",
+        "sec_prompt": "프롬프트 템플릿",
+        "sec_skill": "리뷰 스킬 / 가이드라인",
+        "load_file": "파일에서 불러오기…",
+        "clear": "지우기",
+        "sec_deps": "의존성",
+        "recheck": "다시 확인",
+        "gh_installed": "gh 설치됨",
+        "gh_authed": "gh 인증됨",
+        "claude_cli": "claude CLI",
+        "codex_cli": "codex CLI",
+        "sec_feedback": "피드백",
+        "feedback_repo": "피드백 레포 (owner/repo)",
+        "save": "저장",
+        "not_checked": "아직 확인 안 함.",
+        // feedback window
+        "fb_title": "제목",
+        "fb_body": "내용",
+        "fb_tidy": "에이전트로 정돈",
+        "fb_submit": "이슈로 등록",
+        "fb_cancel": "취소",
+        "fb_preview": "커맨드 미리보기 (실행 안 됨)",
+        "fb_hold": "피드백 레포가 설정되지 않아 등록을 보류합니다. 실행될 커맨드는 아래와 같습니다.",
+        "fb_tidying": "정돈 중…",
+    ]
+
+    static let table: [String: [String: String]] = ["en": en, "ko": ko]
+}

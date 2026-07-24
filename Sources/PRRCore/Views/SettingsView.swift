@@ -1,0 +1,132 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+public struct SettingsView: View {
+    @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    @State private var reposText = ""
+    @State private var showingImporter = false
+
+    public init() {}
+
+    private func langLabel(_ lang: AppLanguage) -> String {
+        switch lang {
+        case .system: return app.l("lang_system")
+        case .korean: return app.l("lang_korean")
+        case .english: return app.l("lang_english")
+        }
+    }
+
+    public var body: some View {
+        Form {
+            Section(app.l("sec_lang")) {
+                Picker(app.l("app_language"), selection: $app.settings.appLanguage) {
+                    ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
+                }
+                Picker(app.l("review_language"), selection: $app.settings.reviewLanguage) {
+                    ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
+                }
+            }
+
+            Section(app.l("sec_github")) {
+                TextField(app.l("owner"), text: $app.settings.owner)
+                TextField(app.l("repos_ph"), text: $reposText)
+                    .onAppear { reposText = app.settings.repositories.joined(separator: ", ") }
+            }
+
+            Section(app.l("sec_ai")) {
+                Picker(app.l("tool"), selection: $app.settings.aiTool) {
+                    ForEach(AITool.allCases) { Text($0.displayName).tag($0) }
+                }.pickerStyle(.segmented)
+            }
+
+            Section(app.l("sec_schedule")) {
+                Picker(app.l("mode"), selection: $app.settings.scheduleMode) {
+                    Text(app.l("daily_at")).tag(ScheduleMode.dailyAt)
+                    Text(app.l("every_n")).tag(ScheduleMode.everyNHours)
+                }.pickerStyle(.segmented)
+                if app.settings.scheduleMode == .dailyAt {
+                    HStack {
+                        Stepper("\(app.l("hour")): \(app.settings.dailyHour)", value: $app.settings.dailyHour, in: 0...23)
+                        Stepper("\(app.l("minute")): \(app.settings.dailyMinute)", value: $app.settings.dailyMinute, in: 0...59)
+                    }
+                } else {
+                    Stepper(String(format: app.l("every_h"), app.settings.intervalHours), value: $app.settings.intervalHours, in: 1...24)
+                }
+            }
+
+            Section {
+                Toggle(app.l("enable_notifications"), isOn: $app.settings.notificationsEnabled)
+                Toggle(app.l("auto_review"), isOn: $app.settings.autoReview)
+            }
+
+            Section(app.l("sec_prompt")) {
+                TextEditor(text: $app.settings.promptTemplate)
+                    .font(.caption.monospaced()).frame(minHeight: 100)
+                Text(app.l("prompt_help")).font(.caption2).foregroundStyle(.secondary)
+            }
+
+            Section(app.l("sec_skill")) {
+                TextEditor(text: $app.settings.reviewSkill)
+                    .font(.caption.monospaced()).frame(minHeight: 80)
+                Text(app.l("skill_help")).font(.caption2).foregroundStyle(.secondary)
+                HStack {
+                    Button(app.l("load_file")) { showingImporter = true }
+                    if !app.settings.reviewSkill.isEmpty {
+                        Button(app.l("clear")) { app.settings.reviewSkill = "" }
+                    }
+                }
+            }
+
+            Section(app.l("sec_feedback")) {
+                TextField(app.l("feedback_repo"), text: $app.settings.feedbackRepository)
+            }
+
+            Section(app.l("sec_deps")) {
+                dependencyRows
+                Button(app.l("recheck")) { Task { await app.diagnose() } }
+            }
+
+            HStack {
+                Spacer()
+                Button(app.l("save")) {
+                    app.settings.repositories = reposText
+                        .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                    app.saveSettings()
+                    dismiss()
+                    NSApplication.shared.keyWindow?.close()
+                }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 480, height: 720)
+        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.plainText, .text, UTType(filenameExtension: "md") ?? .plainText]) { result in
+            if case .success(let url) = result,
+               url.startAccessingSecurityScopedResource() {
+                defer { url.stopAccessingSecurityScopedResource() }
+                if let text = try? String(contentsOf: url, encoding: .utf8) {
+                    app.settings.reviewSkill = text
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var dependencyRows: some View {
+        if let s = app.status {
+            row(app.l("gh_installed"), s.ghInstalled)
+            row(app.l("gh_authed") + (s.ghLogin.map { " (\($0))" } ?? ""), s.ghAuthenticated)
+            row(app.l("claude_cli"), s.claudeInstalled)
+            row(app.l("codex_cli"), s.codexInstalled)
+            ForEach(s.problems, id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
+        } else {
+            Text(app.l("not_checked")).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func row(_ label: String, _ ok: Bool) -> some View {
+        HStack {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red)
+            Text(label).font(.caption)
+        }
+    }
+}

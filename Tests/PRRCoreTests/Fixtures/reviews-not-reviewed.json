@@ -1,0 +1,4 @@
+[
+  { "user": { "login": "someone-else" }, "state": "COMMENTED" },
+  { "user": { "login": "another-dev" }, "state": "CHANGES_REQUESTED" }
+]

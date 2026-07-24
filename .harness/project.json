@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "build": "swift build",
+    "test": "swift test",
+    "bundle": "Scripts/build-app.sh"
+  },
+  "boundaries": [
+    "Do not commit secrets or machine-specific configuration.",
+    "Preserve unrelated user changes.",
+    "Do not perform destructive or externally visible actions without authority.",
+    "Never post GitHub reviews, comments, or approvals automatically; all publishing requires an explicit user action.",
+    "Do not manage or store auth tokens in the app; delegate authentication entirely to the gh and claude/codex CLIs.",
+    "Integrate with GitHub via the gh CLI and with AI via the claude/codex CLIs (no direct API keys)."
+  ]
+}

@@ -1,0 +1,327 @@
+import Foundation
+import SwiftUI
+
+public enum LoadState: Equatable {
+    case idle
+    case loading
+    case done
+    case failed(String)
+
+    public var isFailed: Bool { if case .failed = self { return true }; return false }
+}
+
+/// A pull request plus its (optional) analysis and fetched details.
+public struct PRItem: Identifiable, Equatable {
+    public var pr: PullRequest
+    public var details: PRDetails?
+    public var analysis: Analysis?
+    public var usage: AIUsage?
+    public var state: LoadState = .idle
+    public var id: String { pr.id }
+
+    public init(pr: PullRequest) { self.pr = pr }
+}
+
+/// Top-level observable state. Orchestrates dependency diagnosis, collection,
+/// analysis, and user-triggered publishing. Runs on the main actor.
+@MainActor
+public final class AppState: ObservableObject {
+    @Published public private(set) var items: [PRItem] = []
+    @Published public private(set) var status: DependencyStatus?
+    @Published public private(set) var isRefreshing = false
+    @Published public private(set) var lastRun: Date?
+    @Published public var lastError: String?
+    @Published public var settings: AppSettings
+    /// PR currently shown in the detail window.
+    @Published public var selectedItemID: String?
+    /// Persisted review history, newest first.
+    @Published public private(set) var historyItems: [ReviewRecord] = []
+
+    private let runner: ProcessRunning
+    private let locator: ToolLocator
+    private let settingsStore: SettingsStore
+    private let history: HistoryStore
+
+    private var ghPath: String?
+    private var claudePath: String?
+    private var codexPath: String?
+    private var scheduleTimer: Timer?
+    private var didBootstrap = false
+
+    public init(runner: ProcessRunning = SystemProcessRunner(),
+                settingsStore: SettingsStore = SettingsStore(),
+                history: HistoryStore = HistoryStore()) {
+        self.runner = runner
+        self.locator = ToolLocator(runner: runner)
+        self.settingsStore = settingsStore
+        self.history = history
+        self.settings = settingsStore.load()
+        self.historyItems = history.all()
+        // Start diagnosis and scheduling at launch, not only when the popover opens.
+        Task { await self.bootstrap() }
+    }
+
+    /// Cumulative usage across all recorded reviews.
+    public func historyTotals() -> (tokens: Int, costUSD: Double, count: Int) { history.totals() }
+
+    public func deleteHistory(id: String) {
+        history.delete(id: id)
+        historyItems = history.all()
+    }
+
+    public var pendingCount: Int { items.count }
+
+    /// Localization helper bound to the selected app language.
+    public var l: L10n { L10n(language: settings.appLanguage) }
+
+    public var selectedItem: PRItem? { items.first { $0.id == selectedItemID } }
+
+    public func select(_ item: PRItem) { selectedItemID = item.id }
+
+    // MARK: - Lifecycle
+
+    public func bootstrap() async {
+        guard !didBootstrap else { return }
+        didBootstrap = true
+        Notifier.requestAuthorization()
+        await diagnose()
+        scheduleNextRun()
+    }
+
+    public func diagnose() async {
+        let doctor = DependencyDoctor(runner: runner, locator: locator)
+        let status = await doctor.diagnose()
+        self.status = status
+        self.ghPath = await locator.path(for: "gh")
+        self.claudePath = await locator.path(for: "claude")
+        self.codexPath = await locator.path(for: "codex")
+    }
+
+    // MARK: - Settings
+
+    public func saveSettings() {
+        settingsStore.save(settings)
+        scheduleNextRun()
+    }
+
+    // MARK: - Collection + analysis
+
+    public func refresh() async {
+        guard !isRefreshing else { return }
+        guard let ghPath, let status, status.ghAuthenticated, let login = status.ghLogin else {
+            lastError = "gh is not ready. Open Settings to check dependencies."
+            return
+        }
+        isRefreshing = true
+        lastError = nil
+        defer { isRefreshing = false; lastRun = Date() }
+
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        let previousIDs = Set(items.map(\.id))
+        do {
+            let prs = try await github.fetchAwaitingReview(settings: settings, login: login)
+            // Fetch only — do NOT auto-analyze. Preserve any existing analysis for PRs
+            // that are still open so a manual review isn't discarded on refresh.
+            let previous = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+            items = prs.map { pr in previous[pr.id] ?? PRItem(pr: pr) }
+        } catch {
+            lastError = "\(error)"
+            return
+        }
+
+        let newOnes = items.filter { !previousIDs.contains($0.id) }
+        if settings.notificationsEnabled, !newOnes.isEmpty {
+            Notifier.notify(
+                title: "PR Review Reminder",
+                body: "\(newOnes.count) pull request(s) awaiting your review."
+            )
+        }
+
+        // Token-free restore: if a stored review matches the PR's current head
+        // commit, reuse it instead of spending tokens again. (`github` from above.)
+        for item in items where item.analysis == nil {
+            guard let sha = try? await github.fetchHeadSha(item.pr),
+                  let rec = history.record(repository: item.pr.repository, number: item.pr.number, headSha: sha),
+                  let i = items.firstIndex(where: { $0.id == item.id }) else { continue }
+            items[i].details = rec.details
+            items[i].analysis = rec.analysis
+            items[i].usage = rec.usage
+            items[i].state = .done
+        }
+
+        // Optional: automatically review when enabled in settings.
+        if settings.autoReview {
+            for item in items where item.analysis == nil {
+                await review(item.id, notifyOnComplete: false)
+            }
+        }
+    }
+
+    /// Fetches PR details (diff/body) without running AI, so the diff can be shown
+    /// before a review is requested.
+    public func ensureDetails(_ itemID: String) async {
+        guard let item = items.first(where: { $0.id == itemID }) else { return }
+        guard item.details == nil, let ghPath else { return }
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        if let details = try? await github.fetchDetails(item.pr) {
+            if let i = items.firstIndex(where: { $0.id == itemID }) {
+                items[i].details = details
+            }
+        }
+    }
+
+    /// Runs agent code review for a single PR on demand (fetch details + analyze).
+    /// The `items` array may be replaced by a scheduled refresh during the long
+    /// await, so the item is always re-located by id — never by a cached index.
+    public func review(_ itemID: String, notifyOnComplete: Bool = true) async {
+        guard let start = items.firstIndex(where: { $0.id == itemID }) else { return }
+        guard let ghPath else { lastError = "gh is not ready."; return }
+        if case .loading = items[start].state { return }
+
+        func mutate(_ body: (inout PRItem) -> Void) {
+            guard let i = items.firstIndex(where: { $0.id == itemID }) else { return }
+            body(&items[i])
+        }
+        func current() -> PRItem? { items.first { $0.id == itemID } }
+
+        mutate { $0.state = .loading }
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        let ai = AIService(runner: runner, claudePath: claudePath, codexPath: codexPath)
+        guard let pr = current()?.pr else { return }
+        do {
+            let details: PRDetails
+            if let existing = current()?.details {
+                details = existing
+            } else {
+                details = try await github.fetchDetails(pr)
+            }
+            mutate { $0.details = details }
+            let (analysis, usage) = try await ai.analyze(
+                title: pr.title, body: details.body, diff: details.diff, settings: settings
+            )
+            mutate { $0.analysis = analysis; $0.usage = usage; $0.state = .done }
+            // Persist to history for later viewing and token-free restore.
+            let record = ReviewRecord(
+                repository: pr.repository, number: pr.number, title: pr.title, author: pr.author,
+                url: pr.url, headSha: details.headSha, tool: settings.aiTool, reviewedAt: Date(),
+                analysis: analysis, usage: usage, details: details)
+            history.upsert(record)
+            historyItems = history.all()
+            if notifyOnComplete, settings.notificationsEnabled {
+                let l = L10n(language: settings.appLanguage)
+                Notifier.notify(title: l("review_done_title"),
+                                body: String(format: l("review_done_body"), "\(pr.repository)#\(pr.number)"))
+            }
+        } catch {
+            mutate { $0.state = .failed("\(error)") }
+        }
+    }
+
+    // MARK: - Publishing (explicit user actions only)
+
+    public func postInlineComments(for item: PRItem, comments: [InlineComment]) async {
+        guard let ghPath, let details = item.details else {
+            lastError = "Missing PR details; refresh first."
+            return
+        }
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        var failures: [String] = []
+        for comment in comments {
+            do {
+                try await github.postInlineComment(comment, on: item.pr, commitSha: details.headSha)
+            } catch {
+                // Isolate failures (e.g. a line that isn't part of the diff) so the
+                // remaining comments still post.
+                failures.append("\(comment.path):\(comment.line)")
+            }
+        }
+        if !failures.isEmpty {
+            lastError = "Some comments failed to post: \(failures.joined(separator: ", "))"
+        }
+    }
+
+    /// Posts inline comments and then approves in one action.
+    public func postInlineCommentsAndApprove(for item: PRItem, comments: [InlineComment], approveBody: String) async {
+        await postInlineComments(for: item, comments: comments)
+        // Only approve if posting didn't record an error.
+        if lastError == nil {
+            await approve(item, body: approveBody)
+        }
+    }
+
+    public func postSummaryComment(for item: PRItem, override: String? = nil) async {
+        guard let ghPath else { return }
+        guard let summary = override ?? item.analysis?.summary else { return }
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        do {
+            try await github.postSummaryComment(summary, on: item.pr)
+        } catch {
+            lastError = "\(error)"
+        }
+    }
+
+    public func approve(_ item: PRItem, body: String?) async {
+        guard let ghPath else { return }
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        do {
+            try await github.approve(item.pr, body: body)
+            items.removeAll { $0.id == item.id }
+        } catch {
+            lastError = "\(error)"
+        }
+    }
+
+    // MARK: - Feedback (F5)
+
+    private func makeAIService() -> AIService {
+        AIService(runner: runner, claudePath: claudePath, codexPath: codexPath)
+    }
+
+    /// Tidy the feedback draft via the AI CLI. Returns nil on error (sets lastError).
+    public func tidyFeedback(title: String, body: String) async -> (title: String, body: String)? {
+        let feedback = FeedbackService(github: nil, ai: makeAIService())
+        do {
+            return try await feedback.tidy(title: title, body: body, settings: settings)
+        } catch {
+            lastError = "\(error)"
+            return nil
+        }
+    }
+
+    /// Build the issue command / submit. While no feedback repo is set, returns a
+    /// `.held` preview and executes nothing.
+    public func submitFeedback(title: String, body: String) async -> FeedbackService.SubmitResult? {
+        let github = ghPath.map { GitHubService(runner: runner, ghPath: $0) }
+        let feedback = FeedbackService(github: github, ai: makeAIService())
+        do {
+            return try await feedback.submit(title: title, body: body, settings: settings, ghPath: ghPath)
+        } catch {
+            lastError = "\(error)"
+            return nil
+        }
+    }
+
+    public func openInBrowser(_ item: PRItem) {
+        #if canImport(AppKit)
+        if let url = URL(string: item.pr.url) {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
+    }
+
+    // MARK: - Scheduling
+
+    private func scheduleNextRun() {
+        scheduleTimer?.invalidate()
+        let next = Scheduler.nextRunDate(after: Date(), settings: settings)
+        let interval = max(60, next.timeIntervalSinceNow)
+        let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refresh()
+                self?.scheduleNextRun()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        scheduleTimer = timer
+    }
+}

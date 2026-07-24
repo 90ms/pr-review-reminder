@@ -1,0 +1,18 @@
+[
+  {
+    "number": 42,
+    "title": "Add retry to uploader",
+    "url": "https://github.com/fastlane-dev/beez/pull/42",
+    "updatedAt": "2026-07-20T09:30:00Z",
+    "author": { "login": "octocat" },
+    "repository": { "name": "beez", "nameWithOwner": "fastlane-dev/beez" }
+  },
+  {
+    "number": 7,
+    "title": "Fix crash on empty list",
+    "url": "https://github.com/fastlane-dev/webapp/pull/7",
+    "updatedAt": "2026-07-22T14:00:00Z",
+    "author": { "login": "hubber" },
+    "repository": { "name": "webapp", "nameWithOwner": "fastlane-dev/webapp" }
+  }
+]
