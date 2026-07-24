@@ -108,11 +108,7 @@ public struct MenuContentView: View {
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }.buttonStyle(.borderless).font(.caption)
             Button(app.l("settings")) {
-                NSApplication.shared.sendAction(
-                    Selector(("showSettingsWindow:")),
-                    to: nil,
-                    from: nil
-                )
+                openWindow(id: "settings")
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }.buttonStyle(.borderless).font(.caption)
             Button(app.l("quit")) { NSApplication.shared.terminate(nil) }.buttonStyle(.borderless).font(.caption)

@@ -30,11 +30,12 @@ struct PRRApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Settings {
+        Window(app.l("settings"), id: "settings") {
             SettingsView()
                 .environmentObject(app)
                 .navigationTitle(app.l("settings"))
         }
+        .windowResizability(.contentSize)
 
         Window(app.l("pr_detail"), id: "pr-detail") {
             PRDetailView()
