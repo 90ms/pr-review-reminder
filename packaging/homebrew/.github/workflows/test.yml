@@ -1,0 +1,23 @@
+name: Test Formula
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Formula from source
+        run: brew install --build-from-source ./Formula/pr-review-reminder.rb
+
+      - name: Test Formula
+        run: brew test pr-review-reminder
+
+      - name: Audit Formula
+        run: brew audit --strict pr-review-reminder

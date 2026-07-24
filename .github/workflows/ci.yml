@@ -32,7 +32,9 @@ jobs:
         run: swift test
 
       - name: Test Homebrew launcher
-        run: ./Tests/Scripts/LauncherTests.sh
+        run: |
+          ./Tests/Scripts/LauncherTests.sh
+          ./Tests/Scripts/HomebrewFormulaTests.sh
 
       - name: Assemble application bundle
         env:

@@ -24,7 +24,11 @@ BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
 echo "==> Building release binary"
 cd "$ROOT"
-swift build -c release
+SWIFT_ARGS=(build -c release)
+if [[ "${SWIFT_BUILD_DISABLE_SANDBOX:-0}" == "1" ]]; then
+    SWIFT_ARGS+=(--disable-sandbox)
+fi
+swift "${SWIFT_ARGS[@]}"
 
 for tool in qlmanage sips iconutil; do
     if ! command -v "$tool" >/dev/null 2>&1; then
