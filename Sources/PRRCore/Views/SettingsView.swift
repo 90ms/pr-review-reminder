@@ -168,14 +168,26 @@ public struct SettingsView: View {
                 }
             }
 
+            Section(app.l("sec_storage")) {
+                storageRow(
+                    title: app.l("settings_storage"),
+                    diagnostic: app.settingsStorageDiagnostic
+                )
+                storageRow(
+                    title: app.l("history_storage"),
+                    diagnostic: app.historyStorageDiagnostic
+                )
+            }
+
             HStack {
                 Spacer()
                 Button(app.l("save")) {
                     app.settings.repositories = reposText
                         .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                    app.saveSettings()
-                    dismiss()
-                    NSApplication.shared.keyWindow?.close()
+                    if app.saveSettings() {
+                        dismiss()
+                        NSApplication.shared.keyWindow?.close()
+                    }
                 }.keyboardShortcut(.defaultAction)
             }
         }
@@ -189,6 +201,55 @@ public struct SettingsView: View {
                     app.settings.reviewSkill = text
                 }
             }
+        }
+    }
+
+    private func storageRow(title: String, diagnostic: StorageDiagnostic) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: diagnostic.health.isFailure
+                    ? "exclamationmark.triangle.fill"
+                    : "checkmark.circle.fill")
+                    .foregroundStyle(diagnostic.health.isFailure ? .orange : .green)
+                Text(title)
+                Spacer()
+                if diagnostic.byteCount > 0 {
+                    Text(ByteCountFormatter.string(
+                        fromByteCount: Int64(diagnostic.byteCount),
+                        countStyle: .file
+                    ))
+                    .foregroundStyle(.secondary)
+                }
+            }
+            Text(storageHealthLabel(diagnostic.health))
+                .font(.caption)
+                .foregroundStyle(diagnostic.health.isFailure ? .orange : .secondary)
+                .textSelection(.enabled)
+            Text(diagnostic.location)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            if let saved = diagnostic.lastSavedAt {
+                Text("\(app.l("last_saved")) \(saved.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if let backup = diagnostic.backupLocation {
+                Text("\(app.l("corrupt_backup")) \(backup)")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private func storageHealthLabel(_ health: StorageHealth) -> String {
+        switch health {
+        case .healthy: return app.l("storage_healthy")
+        case .empty: return app.l("storage_empty")
+        case .readFailed(let message): return "\(app.l("storage_read_failed")): \(message)"
+        case .decodeFailed(let message): return "\(app.l("storage_decode_failed")): \(message)"
+        case .writeFailed(let message): return "\(app.l("storage_write_failed")): \(message)"
         }
     }
 

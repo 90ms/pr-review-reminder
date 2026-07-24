@@ -66,6 +66,8 @@ public final class AppState: ObservableObject {
     @Published public private(set) var nextRun: Date?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
+    @Published public private(set) var settingsStorageDiagnostic: StorageDiagnostic
+    @Published public private(set) var historyStorageDiagnostic: StorageDiagnostic
     @Published public private(set) var updateInfo: AppUpdateInfo?
     @Published public private(set) var updateStage: AppUpdateStage = .idle
     /// PR currently shown in the detail window.
@@ -98,6 +100,8 @@ public final class AppState: ObservableObject {
         self.settingsStore = settingsStore
         self.history = history
         self.settings = settingsStore.load()
+        self.settingsStorageDiagnostic = settingsStore.diagnostic
+        self.historyStorageDiagnostic = history.diagnostic
         self.historyItems = self.settings.historyEnabled ? history.all() : []
         // Start diagnosis and scheduling at launch, not only when the popover opens.
         // Tests may opt out to drive lifecycle transitions deterministically.
@@ -113,11 +117,13 @@ public final class AppState: ObservableObject {
 
     public func deleteHistory(id: String) {
         history.delete(id: id)
+        historyStorageDiagnostic = history.diagnostic
         historyItems = history.all()
     }
 
     public func deleteAllHistory() {
         history.deleteAll()
+        historyStorageDiagnostic = history.diagnostic
         historyItems = []
         selectedHistoryID = nil
     }
@@ -190,16 +196,20 @@ public final class AppState: ObservableObject {
 
     // MARK: - Settings
 
-    public func saveSettings() {
+    @discardableResult
+    public func saveSettings() -> Bool {
         settingsStore.save(settings)
+        settingsStorageDiagnostic = settingsStore.diagnostic
         if settings.historyEnabled {
             history.applyRetention(days: settings.historyRetentionDays)
+            historyStorageDiagnostic = history.diagnostic
             historyItems = history.all()
         } else {
             historyItems = []
             selectedHistoryID = nil
         }
         scheduleNextRun()
+        return !settingsStorageDiagnostic.health.isFailure
     }
 
     public func checkForUpdates() async {
@@ -437,6 +447,7 @@ public final class AppState: ObservableObject {
             if settings.historyEnabled {
                 history.upsert(record)
                 history.applyRetention(days: settings.historyRetentionDays)
+                historyStorageDiagnostic = history.diagnostic
                 historyItems = history.all()
             }
             if notifyOnComplete, settings.notificationsEnabled {
