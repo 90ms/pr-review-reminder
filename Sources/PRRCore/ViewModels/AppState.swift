@@ -410,8 +410,8 @@ public final class AppState: ObservableObject {
         let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor [self] in
-                await refresh()
-                scheduleNextRun()
+                await self.refresh()
+                self.scheduleNextRun()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
