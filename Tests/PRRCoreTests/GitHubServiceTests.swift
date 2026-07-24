@@ -105,4 +105,55 @@ final class GitHubServiceTests: XCTestCase {
 
         try await service.requireCurrentHead("same-sha", for: pr)
     }
+
+    func testReadRetriesAfterTransientFailure() async throws {
+        let mock = MockProcessRunner()
+        var attempts = 0
+        mock.responder = { _ in
+            attempts += 1
+            return attempts == 1
+                ? CommandResult(exitCode: 1, stdout: "", stderr: "temporary")
+                : CommandResult(exitCode: 0, stdout: "sha\n", stderr: "")
+        }
+        let service = GitHubService(
+            runner: mock,
+            ghPath: "/usr/bin/gh",
+            readRetryDelays: [0]
+        )
+        let pr = PullRequest(
+            repository: "fastlane-dev/beez", number: 42, title: "Title",
+            author: "octocat", url: "https://example.com/pr/42")
+
+        XCTAssertEqual(try await service.fetchHeadSha(pr), "sha")
+        XCTAssertEqual(attempts, 2)
+    }
+
+    func testDiffFailureIsNotReturnedAsEmptyDiff() async throws {
+        let mock = MockProcessRunner()
+        mock.responder = { command in
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(
+                    exitCode: 0,
+                    stdout: #"{"body":"","headRefOid":"sha","additions":1,"deletions":0}"#,
+                    stderr: ""
+                )
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "diff unavailable")
+        }
+        let service = GitHubService(
+            runner: mock,
+            ghPath: "/usr/bin/gh",
+            readRetryDelays: []
+        )
+        let pr = PullRequest(
+            repository: "fastlane-dev/beez", number: 42, title: "Title",
+            author: "octocat", url: "https://example.com/pr/42")
+
+        do {
+            _ = try await service.fetchDetails(pr)
+            XCTFail("Expected diff failure")
+        } catch let error as GitHubError {
+            XCTAssertTrue(error.message.contains("diff unavailable"))
+        }
+    }
 }

@@ -27,10 +27,35 @@ public struct PRDetails: Sendable, Equatable, Codable {
 public final class GitHubService: Sendable {
     private let runner: ProcessRunning
     private let gh: String
+    private let readRetryDelays: [UInt64]
 
-    public init(runner: ProcessRunning, ghPath: String) {
+    public init(
+        runner: ProcessRunning,
+        ghPath: String,
+        readRetryDelays: [UInt64] = [250_000_000, 500_000_000]
+    ) {
         self.runner = runner
         self.gh = ghPath
+        self.readRetryDelays = readRetryDelays
+    }
+
+    private func runRead(_ command: Command) async throws -> CommandResult {
+        var lastResult: CommandResult?
+        for attempt in 0...readRetryDelays.count {
+            do {
+                let result = try await runner.run(command)
+                if result.succeeded { return result }
+                lastResult = result
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if attempt == readRetryDelays.count { throw error }
+            }
+            guard attempt < readRetryDelays.count else { break }
+            try await Task.sleep(nanoseconds: readRetryDelays[attempt])
+        }
+        if let lastResult { return lastResult }
+        throw GitHubError("GitHub read failed without a result.")
     }
 
     // MARK: - Command builders (pure, testable)
@@ -185,7 +210,7 @@ public final class GitHubService: Sendable {
     // MARK: - Async operations
 
     public func currentLogin() async throws -> String {
-        let result = try await runner.run(Self.currentLoginCommand(gh: gh))
+        let result = try await runRead(Self.currentLoginCommand(gh: gh))
         guard result.succeeded else {
             throw GitHubError("gh not authenticated: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
@@ -199,7 +224,7 @@ public final class GitHubService: Sendable {
     /// request another review after new commits, and an older review must not
     /// hide that renewed request.
     public func fetchAwaitingReview(settings: AppSettings, login: String) async throws -> [PullRequest] {
-        let search = try await runner.run(Self.searchPRsCommand(gh: gh, owner: settings.owner, repositories: settings.repositories))
+        let search = try await runRead(Self.searchPRsCommand(gh: gh, owner: settings.owner, repositories: settings.repositories))
         guard search.succeeded else {
             throw GitHubError("gh search failed: \(search.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
@@ -208,7 +233,7 @@ public final class GitHubService: Sendable {
 
     /// Fetches only the head commit SHA (cheap, no AI cost) for cache lookups.
     public func fetchHeadSha(_ pr: PullRequest) async throws -> String {
-        let result = try await runner.run(Self.headShaCommand(gh: gh, repository: pr.repository, number: pr.number))
+        let result = try await runRead(Self.headShaCommand(gh: gh, repository: pr.repository, number: pr.number))
         guard result.succeeded else {
             throw GitHubError("gh pr view failed: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
@@ -225,18 +250,21 @@ public final class GitHubService: Sendable {
     }
 
     public func fetchDetails(_ pr: PullRequest) async throws -> PRDetails {
-        let meta = try await runner.run(Self.detailsCommand(gh: gh, repository: pr.repository, number: pr.number))
+        let meta = try await runRead(Self.detailsCommand(gh: gh, repository: pr.repository, number: pr.number))
         guard meta.succeeded else {
             throw GitHubError("gh pr view failed: \(meta.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         let dto = try JSONDecoder().decode(DetailsDTO.self, from: Data(meta.stdout.utf8))
-        let diff = try await runner.run(Self.diffCommand(gh: gh, repository: pr.repository, number: pr.number))
+        let diff = try await runRead(Self.diffCommand(gh: gh, repository: pr.repository, number: pr.number))
+        guard diff.succeeded else {
+            throw GitHubError("gh pr diff failed: \(diff.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
         return PRDetails(
             body: dto.body ?? "",
             headSha: dto.headRefOid,
             additions: dto.additions,
             deletions: dto.deletions,
-            diff: diff.succeeded ? diff.stdout : ""
+            diff: diff.stdout
         )
     }
 

@@ -12,6 +12,11 @@ final class AIServiceTests: XCTestCase {
             AIService.defaultAnalysisTimeout
         )
     }
+
+    func testDiffTruncationIndicatorUsesPromptLimit() {
+        XCTAssertFalse(AIService.isDiffTruncated(String(repeating: "a", count: 60_000)))
+        XCTAssertTrue(AIService.isDiffTruncated(String(repeating: "a", count: 60_001)))
+    }
     // AC4 — parse clean JSON.
     func testParseCleanJSON() {
         let raw = """

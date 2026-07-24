@@ -274,6 +274,13 @@ public struct PRDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(app.l("diff")).font(.headline).padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 4)
             if let diff = item.details?.diff, !diff.isEmpty {
+                if AIService.isDiffTruncated(diff) {
+                    Label(app.l("diff_truncated_warning"), systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 4)
+                }
                 DiffView(diff: diff)
             } else {
                 Spacer()

@@ -10,16 +10,26 @@ public struct AIError: Error, Sendable, CustomStringConvertible {
 /// CLI subscription; never handles API keys.
 public final class AIService: Sendable {
     public static let defaultAnalysisTimeout: TimeInterval = 10 * 60
+    public static let defaultMaxDiffChars = 60_000
     private let runner: ProcessRunning
     private let claudePath: String?
     private let codexPath: String?
     private let maxDiffChars: Int
 
-    public init(runner: ProcessRunning, claudePath: String?, codexPath: String?, maxDiffChars: Int = 60_000) {
+    public init(
+        runner: ProcessRunning,
+        claudePath: String?,
+        codexPath: String?,
+        maxDiffChars: Int = AIService.defaultMaxDiffChars
+    ) {
         self.runner = runner
         self.claudePath = claudePath
         self.codexPath = codexPath
         self.maxDiffChars = maxDiffChars
+    }
+
+    public static func isDiffTruncated(_ diff: String, maxDiffChars: Int = defaultMaxDiffChars) -> Bool {
+        diff.count > maxDiffChars
     }
 
     // MARK: - Prompt (pure, testable)

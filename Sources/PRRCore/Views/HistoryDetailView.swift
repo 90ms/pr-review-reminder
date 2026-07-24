@@ -33,6 +33,13 @@ public struct HistoryDetailView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
                         .padding(.bottom, 4)
+                    if AIService.isDiffTruncated(record.details.diff) {
+                        Label(app.l("diff_truncated_warning"), systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 4)
+                    }
                     DiffView(diff: record.details.diff)
                 }
                 .frame(minWidth: 320)
