@@ -211,6 +211,7 @@ swift test
 - Codex 비용은 CLI가 보고한 실제 비용이 아니라 사용자가 입력한 단가 기반 추정이다.
 - 스케줄은 앱이 실행 중일 때만 동작한다.
 - VoiceOver와 키보드 탐색은 실제 macOS GUI에서 추가 수동 감사가 필요하다.
-- 정식 릴리스에는 저장소 관리자가 Developer ID와 Apple 공증 secret을 설정해야 한다.
+- Developer ID가 없는 ad-hoc ZIP은 최초 실행 시 macOS의 명시적 승인이 필요할 수 있어
+  Homebrew source build를 우선 설치 경로로 사용한다.
 
 이 제약의 해결 순서와 커밋 단위는 [`tasks/plan.md`](../tasks/plan.md)에 정의한다.

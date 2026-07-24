@@ -18,14 +18,15 @@
 | 비용 | Codex 단가 추정, 기간별 로컬 토큰 예산 | 모델/서비스 테스트 |
 | UI | 긴 줄 가로 스크롤, 동적 제목, 앱 아이콘, 다음 실행, 기본 접근성 label | build + 수동 확인 대상 |
 | 동시성 | Swift 6 language mode | macOS 15 CI build/test/bundle |
-| 배포 기반 | Developer ID 서명·공증·GitHub Release workflow | 태그 릴리스 전 secret 필요 |
+| 배포 기반 | ad-hoc ZIP/checksum과 선택적 Developer ID 서명·공증 workflow | main CI |
+| Homebrew 준비 | 재사용 가능 패키저, launcher, Formula renderer, tap CI seed | 셸 테스트 + main CI |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
 
 ### P0 — 실제 macOS 제품 검증
 
-- 서명된 앱으로 최초 실행, CLI 탐지, 알림 권한, 스케줄, 취소를 점검한다.
+- 실제 패키징 앱으로 최초 실행, CLI 탐지, 알림 권한, 스케줄, 취소를 점검한다.
 - VoiceOver 읽기 순서와 전체 키보드 탐색을 감사한다.
 - 테스트 fixture 계정으로 메뉴, PR 상세, 히스토리 상세 스크린샷/GIF를 만든다.
 - 여러 창에서 언어 변경과 제목 갱신을 확인한다.
@@ -34,12 +35,14 @@
 
 ### P1 — 첫 정식 릴리스
 
-- GitHub Actions secret을 [`docs/RELEASING.md`](../docs/RELEASING.md)에 따라 설정한다.
+- 공개 `90ms/homebrew-tap` 저장소를 만들고 seed 파일을 복사한다.
+- 첫 Formula를 렌더링해 source build/audit CI를 통과시킨다.
 - `CHANGELOG`를 버전 섹션으로 확정하고 annotated tag를 push한다.
-- notarization/stapling과 깨끗한 macOS 계정 설치를 검증한다.
-- 릴리스 URL과 checksum이 생긴 뒤 Homebrew Cask를 추가할지 결정한다.
+- ad-hoc GitHub ZIP과 Homebrew source 설치를 모두 검증한다.
+- Developer ID를 나중에 확보하면 notarization/stapling 경로를 활성화한다.
 
-완료 조건: Gatekeeper 경고 없이 설치되는 서명·공증 ZIP과 릴리스 노트가 공개된다.
+완료 조건: `brew install`과 `brew upgrade`가 설정·히스토리를 보존하며 성공하고,
+GitHub Release에 버전 ZIP과 checksum이 공개된다.
 
 ### P2 — 운영 관찰성
 

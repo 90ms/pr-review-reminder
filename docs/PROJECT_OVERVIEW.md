@@ -54,7 +54,8 @@ diff가 포함되며 Application Support의 사용자 전용 로컬 JSON에 저�
 AI가 만든 내용은 초안입니다. 코드와 라인 위치를 검증하고 미리보기에서 편집한 뒤
 게시하세요. 앱의 핵심 계약은 “자동 수집·선택적 분석·수동 게시”입니다.
 
-정식 배포는 Developer ID 서명과 Apple 공증을 통과한 태그 릴리스만 허용합니다.
+배포는 Homebrew source build를 우선하며 태그에는 ad-hoc ZIP과 checksum을 제공할 수
+있습니다. Developer ID를 설정한 경우 같은 workflow가 서명과 Apple 공증을 추가합니다.
 
 ### 더 알아보기
 

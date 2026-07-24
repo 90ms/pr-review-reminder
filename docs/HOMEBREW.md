@@ -1,0 +1,91 @@
+# Homebrew 배포 가이드
+
+Developer ID가 없는 동안 binary Cask 대신 사용자의 Mac에서 소스를 빌드하는 개인
+Formula를 사용한다. 공식 Cask 등록이나 Gatekeeper 우회는 목표로 하지 않는다.
+
+## 구성
+
+```text
+pr-review-reminder
+├── Scripts/build-app.sh
+├── Scripts/pr-review-reminder
+├── Scripts/render-homebrew-formula.sh
+└── packaging/homebrew/       # tap 저장소 seed
+
+homebrew-tap
+├── Formula/pr-review-reminder.rb
+└── .github/workflows/test.yml
+```
+
+Formula는 태그 source tarball을 SHA-256으로 검증하고 Swift release build를 수행한다.
+앱은 Formula의 `libexec`에 설치되며 launcher가 실행과 `~/Applications` symlink를
+관리한다. 설정과 히스토리는 Application Support에 있으므로 `brew upgrade` 후에도
+유지된다.
+
+## 최초 tap 생성
+
+1. GitHub에 공개 `90ms/homebrew-tap` 저장소를 만든다.
+2. 이 저장소의 `packaging/homebrew/.github`를 tap의 `.github`로 복사한다.
+3. 첫 릴리스 태그와 source tarball SHA를 준비한다.
+4. Formula를 렌더링한다.
+
+```bash
+version=0.2.0
+curl -L \
+  "https://github.com/90ms/pr-review-reminder/archive/refs/tags/v${version}.tar.gz" \
+  -o "/tmp/pr-review-reminder-${version}.tar.gz"
+sha="$(shasum -a 256 "/tmp/pr-review-reminder-${version}.tar.gz" | awk '{print $1}')"
+
+./Scripts/render-homebrew-formula.sh \
+  "$version" \
+  "$sha" \
+  "/path/to/homebrew-tap/Formula/pr-review-reminder.rb"
+```
+
+5. tap CI에서 source install, `brew test`, `brew audit --strict`를 통과시킨다.
+
+## 사용자 명령
+
+```bash
+brew tap 90ms/tap
+brew install pr-review-reminder
+pr-review-reminder --install-app
+pr-review-reminder
+```
+
+업데이트:
+
+```bash
+brew update
+brew upgrade pr-review-reminder
+```
+
+제거:
+
+```bash
+pr-review-reminder --uninstall-app
+brew uninstall pr-review-reminder
+```
+
+마지막 명령은 앱과 launcher를 제거하지만 Application Support의 사용자 히스토리와
+설정은 보존한다.
+
+## 릴리스별 Formula 갱신
+
+초기에는 자동 병합하지 않는다.
+
+1. 새 태그를 push한다.
+2. source tarball SHA를 계산한다.
+3. renderer로 Formula를 갱신한다.
+4. tap 저장소에 PR을 만든다.
+5. tap CI와 실제 Mac 설치·업데이트를 확인한 뒤 병합한다.
+
+안정화 후 원본 Release workflow가 fine-grained token 또는 GitHub App으로 tap에
+자동 PR을 생성하도록 확장할 수 있다.
+
+## 보안 경계
+
+- `xattr` 제거나 Gatekeeper 비활성화를 기본 설치법으로 안내하지 않는다.
+- Formula는 HTTPS tag tarball과 고정 SHA-256을 사용한다.
+- launcher는 기존 실제 앱을 덮어쓰지 않고 자신이 가리키는 symlink만 제거한다.
+- 쓰기 권한이 필요한 `/Applications` 대신 기본적으로 `~/Applications`를 사용한다.

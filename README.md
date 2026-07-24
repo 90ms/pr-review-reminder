@@ -30,6 +30,32 @@ open "dist/PR Review Reminder.app"
 env -i HOME="$HOME" .build/debug/PRReviewReminder --doctor
 ```
 
+출력 위치와 버전은 패키저가 주입할 수 있다.
+
+```bash
+OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.2.0 BUILD_NUMBER=20 \
+  ./Scripts/build-app.sh
+```
+
+## 설치와 업데이트
+
+Developer ID가 없는 현재 권장 경로는 Homebrew에서 소스를 직접 빌드하는 개인 tap이다.
+Formula와 tap CI 원본은 준비되어 있지만 `90ms/homebrew-tap` 저장소가 아직 없으므로
+다음 명령은 tap 저장소를 공개한 뒤 활성화된다.
+
+```bash
+brew tap 90ms/tap
+brew install pr-review-reminder
+pr-review-reminder --install-app
+
+brew update
+brew upgrade pr-review-reminder
+```
+
+launcher는 앱 실행, `--doctor`, 설치 경로 출력과 `~/Applications` symlink만 관리한다.
+기존 실제 앱이나 다른 대상의 symlink는 덮어쓰거나 삭제하지 않는다. 준비·검증 절차는
+[Homebrew 배포 가이드](docs/HOMEBREW.md)를 참고한다.
+
 메뉴바 오른쪽에 체크리스트 아이콘(대기 PR 개수 배지)이 뜬다. 클릭하면 팝오버가 열린다.
 
 ## 사용 흐름
@@ -118,7 +144,8 @@ tasks/plan.md         # 실행 계획
 제품 흐름과 아키텍처는 [한 페이지 소개](docs/PROJECT_OVERVIEW.md)와
 [현재 제품 명세](docs/SPEC.md)에서 볼 수 있다.
 
-태그 기반 서명·공증 릴리스 절차는 [릴리스 가이드](docs/RELEASING.md)를 참고한다.
+태그 기반 ad-hoc 또는 선택적 서명·공증 릴리스 절차는
+[릴리스 가이드](docs/RELEASING.md)를 참고한다.
 실제 앱 스크린샷/GIF는 macOS GUI에서 검증한 캡처를 확보한 뒤 추가한다.
 
 ## 개발 규율
