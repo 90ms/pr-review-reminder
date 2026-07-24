@@ -2,6 +2,16 @@ import XCTest
 @testable import PRRCore
 
 final class AIServiceTests: XCTestCase {
+    func testAICommandsHaveFiniteTimeouts() {
+        XCTAssertEqual(
+            AIService.claudeCommand(claude: "/claude").timeout,
+            AIService.defaultAnalysisTimeout
+        )
+        XCTAssertEqual(
+            AIService.codexCommand(codex: "/codex").timeout,
+            AIService.defaultAnalysisTimeout
+        )
+    }
     // AC4 — parse clean JSON.
     func testParseCleanJSON() {
         let raw = """

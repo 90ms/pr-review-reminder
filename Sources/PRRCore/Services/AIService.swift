@@ -9,6 +9,7 @@ public struct AIError: Error, Sendable, CustomStringConvertible {
 /// Wraps the `claude` / `codex` CLIs to analyze a PR. Uses the user's existing
 /// CLI subscription; never handles API keys.
 public final class AIService: Sendable {
+    public static let defaultAnalysisTimeout: TimeInterval = 10 * 60
     private let runner: ProcessRunning
     private let claudePath: String?
     private let codexPath: String?
@@ -47,14 +48,22 @@ public final class AIService: Sendable {
     /// claude reads the prompt from stdin in print mode. JSON output carries token
     /// usage and cost alongside the result text.
     public static func claudeCommand(claude: String) -> Command {
-        Command(executable: claude, arguments: ["-p", "--output-format", "json"])
+        Command(
+            executable: claude,
+            arguments: ["-p", "--output-format", "json"],
+            timeout: defaultAnalysisTimeout
+        )
     }
 
     /// codex executes a one-shot prompt from stdin. `--skip-git-repo-check` lets it
     /// run from an arbitrary working directory (the app's CWD is not a git repo), and
     /// `-s read-only` keeps it from executing model-generated shell commands.
     public static func codexCommand(codex: String) -> Command {
-        Command(executable: codex, arguments: ["exec", "--skip-git-repo-check", "-s", "read-only", "-"])
+        Command(
+            executable: codex,
+            arguments: ["exec", "--skip-git-repo-check", "-s", "read-only", "-"],
+            timeout: defaultAnalysisTimeout
+        )
     }
 
     // MARK: - Lenient JSON parsing (pure, testable)
