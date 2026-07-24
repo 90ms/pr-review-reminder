@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pull request details provide focused Review, Changes, and Side-by-side layouts.
 - Homebrew updates show tap, version, build, link, and restart stages with
   operation-specific failures, cancellation, and an explicit restart action.
+- Settings show storage locations, sizes, last-save times, and persistence
+  failures; corrupt history JSON is backed up before recovery.
 
 ### Fixed
 
