@@ -97,4 +97,33 @@ final class DiffParserTests: XCTestCase {
             rows.filter { $0.kind == .fileHeader }.map(\.id)
         )
     }
+
+    func testTargetRowFindsFileLineAndSide() {
+        let diff = """
+        diff --git a/A.swift b/A.swift
+        @@ -1 +1 @@
+        -old
+        +new
+        diff --git a/B.swift b/B.swift
+        @@ -7 +7 @@
+        -before
+        +after
+        """
+        let rows = DiffParser.parse(diff)
+
+        let target = DiffParser.targetRowID(
+            in: rows,
+            path: "B.swift",
+            line: 7,
+            side: "RIGHT"
+        )
+
+        XCTAssertEqual(rows.first { $0.id == target }?.right?.text, "after")
+        XCTAssertNil(DiffParser.targetRowID(
+            in: rows,
+            path: "A.swift",
+            line: 99,
+            side: "RIGHT"
+        ))
+    }
 }

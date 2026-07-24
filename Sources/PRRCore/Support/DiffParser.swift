@@ -28,13 +28,23 @@ public enum DiffParser {
         public let left: Cell?         // original side (deletion or context)
         public let right: Cell?        // changed side (addition or context)
         public let isChange: Bool      // true for additions/deletions, false for context
+        public let filePath: String?
     }
 
     public static func parse(_ diff: String) -> [Row] {
         var rows: [Row] = []
         var id = 0
+        var currentFile: String?
         func emit(_ kind: RowKind, header: String? = nil, left: Cell? = nil, right: Cell? = nil, isChange: Bool = false) {
-            rows.append(Row(id: id, kind: kind, header: header, left: left, right: right, isChange: isChange))
+            rows.append(Row(
+                id: id,
+                kind: kind,
+                header: header,
+                left: left,
+                right: right,
+                isChange: isChange,
+                filePath: currentFile
+            ))
             id += 1
         }
 
@@ -60,6 +70,7 @@ public enum DiffParser {
                 flush()
                 // Prefer the "b/<path>" target as the file label.
                 let path = rawLine.components(separatedBy: " b/").last ?? rawLine
+                currentFile = path
                 emit(.fileHeader, header: path)
             } else if rawLine.hasPrefix("@@") {
                 flush()
@@ -101,6 +112,20 @@ public enum DiffParser {
             guard row.kind == .fileHeader, let path = row.header else { return nil }
             return FileSection(id: row.id, path: path)
         }
+    }
+
+    public static func targetRowID(
+        in rows: [Row],
+        path: String,
+        line: Int,
+        side: String
+    ) -> Int? {
+        rows.first { row in
+            guard row.kind == .line, row.filePath == path else { return false }
+            return side.uppercased() == "LEFT"
+                ? row.left?.number == line
+                : row.right?.number == line
+        }?.id
     }
 
     /// Extracts old/new start line numbers from a hunk header `@@ -a,b +c,d @@`.
