@@ -22,6 +22,7 @@
 | Homebrew 배포 | 공개 tap, 0.2.2 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
 | 최신 릴리스 | 0.2.2 ad-hoc ZIP/checksum과 Homebrew source 설치 | Release workflow + tap CI |
 | 상세 화면 | 리뷰·변경 내용·나란히 레이아웃, diff 오류·빈 결과·재시도 상태 | AppState 테스트 + main CI |
+| 업데이트 UX | 단계별 상태·실패 원인, 프로세스 취소, 링크 갱신, 즉시 재시작 | 서비스 테스트 + main CI |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤

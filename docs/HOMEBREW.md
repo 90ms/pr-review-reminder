@@ -74,7 +74,8 @@ brew upgrade pr-review-reminder
 
 앱의 **설정 → 업데이트**에서도 같은 Formula의 현재/최신 버전을 확인하고 업데이트할 수
 있다. 앱은 자동 업데이트하지 않으며 사용자가 설치 버튼을 누른 경우에만
-`brew upgrade 90ms/tap/pr-review-reminder`를 실행한다. 완료 후 앱을 종료하고 다시 연다.
+`brew upgrade 90ms/tap/pr-review-reminder`를 실행한다. 진행 단계와 실패 명령을
+표시하고 취소를 지원하며, 완료 후 **지금 다시 시작**으로 새 앱을 연다.
 
 제거:
 
