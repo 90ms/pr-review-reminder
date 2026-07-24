@@ -5,6 +5,8 @@ public enum LoadState: Equatable {
     case idle
     case loading
     case done
+    case cancelled
+    case timedOut
     case failed(String)
 
     public var isFailed: Bool { if case .failed = self { return true }; return false }
@@ -49,6 +51,7 @@ public final class AppState: ObservableObject {
     private var codexPath: String?
     private var scheduleTimer: Timer?
     private var didBootstrap = false
+    private var reviewTasks: [String: Task<Void, Never>] = [:]
 
     public init(runner: ProcessRunning = SystemProcessRunner(),
                 settingsStore: SettingsStore = SettingsStore(),
@@ -286,9 +289,29 @@ public final class AppState: ObservableObject {
                 Notifier.notify(title: l("review_done_title"),
                                 body: String(format: l("review_done_body"), "\(pr.repository)#\(pr.number)"))
             }
+        } catch is CancellationError {
+            mutate { $0.state = .cancelled }
+        } catch ProcessRunnerError.timedOut {
+            mutate { $0.state = .timedOut }
         } catch {
             mutate { $0.state = .failed("\(error)") }
         }
+    }
+
+    /// Starts a user-visible review and retains its task so the user can cancel
+    /// the underlying CLI process.
+    public func startReview(_ itemID: String, notifyOnComplete: Bool = true) {
+        guard reviewTasks[itemID] == nil else { return }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.review(itemID, notifyOnComplete: notifyOnComplete)
+            self.reviewTasks[itemID] = nil
+        }
+        reviewTasks[itemID] = task
+    }
+
+    public func cancelReview(_ itemID: String) {
+        reviewTasks[itemID]?.cancel()
     }
 
     // MARK: - Publishing (explicit user actions only)

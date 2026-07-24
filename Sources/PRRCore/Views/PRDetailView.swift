@@ -90,20 +90,39 @@ public struct PRDetailView: View {
             HStack {
                 Text(app.l("not_reviewed")).font(.callout).foregroundStyle(.secondary)
                 Spacer()
-                Button { Task { await app.review(item.id) } } label: {
+                Button { app.startReview(item.id) } label: {
                     Label(app.l("run_review"), systemImage: "sparkles")
                 }.buttonStyle(.borderedProminent)
             }
         case .loading:
-            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(app.l("analyzing")).foregroundStyle(.secondary) }
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(app.l("analyzing")).foregroundStyle(.secondary)
+                Spacer()
+                Button(app.l("cancel_review")) { app.cancelReview(item.id) }
+            }
+        case .cancelled:
+            retryStatus(message: app.l("review_cancelled"), item: item)
+        case .timedOut:
+            retryStatus(message: app.l("review_timed_out"), item: item)
         case .failed(let msg):
             HStack {
                 Text("\(app.l("analysis_failed")): \(msg)").font(.caption).foregroundStyle(.red).lineLimit(2)
                 Spacer()
-                Button { Task { await app.review(item.id) } } label: { Label(app.l("retry"), systemImage: "arrow.clockwise") }
+                Button { app.startReview(item.id) } label: { Label(app.l("retry"), systemImage: "arrow.clockwise") }
             }
         case .done:
             EmptyView()
+        }
+    }
+
+    private func retryStatus(message: String, item: PRItem) -> some View {
+        HStack {
+            Text(message).font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Button { app.startReview(item.id) } label: {
+                Label(app.l("retry"), systemImage: "arrow.clockwise")
+            }
         }
     }
 

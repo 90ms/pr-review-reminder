@@ -18,7 +18,19 @@ struct PRCardView: View {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text(app.l("analyzing")).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(app.l("cancel_review")) {
+                        app.cancelReview(item.id)
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
                 }
+            case .cancelled:
+                Text(app.l("review_cancelled")).font(.caption).foregroundStyle(.secondary)
+                idleButtons
+            case .timedOut:
+                Text(app.l("review_timed_out")).font(.caption).foregroundStyle(.orange)
+                idleButtons
             case .failed(let message):
                 Text("\(app.l("analysis_failed")): \(message)").font(.caption).foregroundStyle(.red).lineLimit(2)
                 idleButtons
@@ -69,7 +81,7 @@ struct PRCardView: View {
     private var idleButtons: some View {
         HStack(spacing: 8) {
             Button {
-                Task { await app.review(item.id) }
+                app.startReview(item.id)
             } label: { Label(item.state.isFailed ? app.l("retry") : app.l("run_review"), systemImage: "sparkles") }
             .buttonStyle(.borderedProminent).controlSize(.small)
 

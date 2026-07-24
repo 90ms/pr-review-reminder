@@ -15,6 +15,36 @@ private final class AppStateMemoryHistoryPersistence: HistoryPersisting, @unchec
     func write(_ data: Data) { self.data = data }
 }
 
+private final class CancellableAppStateRunner: ProcessRunning, @unchecked Sendable {
+    func run(_ command: Command) async throws -> CommandResult {
+        if command.executable == "/bin/zsh", command.arguments.first == "-lc" {
+            return CommandResult(exitCode: 0, stdout: "/usr/bin/true\n", stderr: "")
+        }
+        if command.arguments == ["auth", "status"] {
+            return CommandResult(exitCode: 0, stdout: "", stderr: "")
+        }
+        if command.arguments == ["api", "user", "--jq", ".login"] {
+            return CommandResult(exitCode: 0, stdout: "reviewer\n", stderr: "")
+        }
+        if command.arguments.first == "search" {
+            return CommandResult(exitCode: 0, stdout: AppStateTests.searchJSON(), stderr: "")
+        }
+        if command.arguments.contains("--jq") {
+            return CommandResult(exitCode: 0, stdout: "sha\n", stderr: "")
+        }
+        if command.arguments.prefix(2) == ["pr", "view"] {
+            return CommandResult(exitCode: 0, stdout: AppStateTests.detailsJSON(sha: "sha"), stderr: "")
+        }
+        if command.arguments.prefix(2) == ["pr", "diff"] {
+            return CommandResult(exitCode: 0, stdout: "diff", stderr: "")
+        }
+        if command.arguments.first == "-p" {
+            try await Task.sleep(nanoseconds: 10_000_000_000)
+        }
+        return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+    }
+}
+
 @MainActor
 final class AppStateTests: XCTestCase {
     private let executable = "/usr/bin/true"
@@ -50,7 +80,7 @@ final class AppStateTests: XCTestCase {
         return (state, runner)
     }
 
-    nonisolated private static func searchJSON(title: String = "Test PR") -> String {
+    nonisolated fileprivate static func searchJSON(title: String = "Test PR") -> String {
         """
         [{
           "number": 42,
@@ -63,7 +93,7 @@ final class AppStateTests: XCTestCase {
         """
     }
 
-    nonisolated private static func detailsJSON(sha: String) -> String {
+    nonisolated fileprivate static func detailsJSON(sha: String) -> String {
         """
         {"body":"PR body","headRefOid":"\(sha)","additions":2,"deletions":1}
         """
@@ -217,5 +247,29 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertTrue(state.lastError?.contains("changed") == true)
         XCTAssertFalse(runner.commands.contains { $0.arguments.prefix(2) == ["pr", "comment"] })
+    }
+
+    func testUserCancellationTransitionsReviewState() async {
+        let settingsStore = SettingsStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "cancel.settings"
+        )
+        settingsStore.save(AppSettings(notificationsEnabled: false))
+        let state = AppState(
+            runner: CancellableAppStateRunner(),
+            settingsStore: settingsStore,
+            history: HistoryStore(persistence: AppStateMemoryHistoryPersistence()),
+            autoBootstrap: false
+        )
+        await state.diagnose()
+        await state.refresh()
+
+        state.startReview("acme/widgets#42", notifyOnComplete: false)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.items.first?.state, .loading)
+
+        state.cancelReview("acme/widgets#42")
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.items.first?.state, .cancelled)
     }
 }

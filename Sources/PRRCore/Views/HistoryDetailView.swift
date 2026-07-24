@@ -58,7 +58,7 @@ public struct HistoryDetailView: View {
                     Task {
                         if let itemID = await app.prepareReReview(from: record) {
                             openWindow(id: "pr-detail")
-                            await app.review(itemID)
+                            app.startReview(itemID)
                         }
                         preparingReview = false
                     }
