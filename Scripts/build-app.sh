@@ -22,6 +22,24 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BUILD_DIR/$EXECUTABLE" "$APP_DIR/Contents/MacOS/$EXECUTABLE"
 
+echo "==> Generating app icon"
+ICON_WORK="$(mktemp -d "${TMPDIR:-/tmp}/pr-review-reminder-icon.XXXXXX")"
+trap 'rm -rf "$ICON_WORK"' EXIT
+qlmanage -t -s 1024 -o "$ICON_WORK" "$ROOT/Assets/AppIcon.svg" >/dev/null 2>&1
+MASTER_ICON="$ICON_WORK/AppIcon.svg.png"
+ICONSET="$ICON_WORK/AppIcon.iconset"
+mkdir -p "$ICONSET"
+for spec in \
+    "16 icon_16x16.png" "32 icon_16x16@2x.png" \
+    "32 icon_32x32.png" "64 icon_32x32@2x.png" \
+    "128 icon_128x128.png" "256 icon_128x128@2x.png" \
+    "256 icon_256x256.png" "512 icon_256x256@2x.png" \
+    "512 icon_512x512.png" "1024 icon_512x512@2x.png"; do
+    read -r size filename <<< "$spec"
+    sips -z "$size" "$size" "$MASTER_ICON" --out "$ICONSET/$filename" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/AppIcon.icns"
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -39,6 +57,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <string>0.1</string>
     <key>CFBundleExecutable</key>
     <string>$EXECUTABLE</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>

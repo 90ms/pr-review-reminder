@@ -33,27 +33,23 @@ struct PRRApp: App {
         Settings {
             SettingsView()
                 .environmentObject(app)
-                .navigationTitle(app.l("settings"))
         }
 
         Window(app.l("pr_detail"), id: "pr-detail") {
             PRDetailView()
                 .environmentObject(app)
-                .navigationTitle(app.l("pr_detail"))
         }
         .windowResizability(.contentMinSize)
 
         Window(app.l("feedback"), id: "feedback") {
             FeedbackView()
                 .environmentObject(app)
-                .navigationTitle(app.l("feedback"))
         }
         .windowResizability(.contentSize)
 
         Window(app.l("history"), id: "history") {
             HistoryView()
                 .environmentObject(app)
-                .navigationTitle(app.l("history"))
         }
         .windowResizability(.contentMinSize)
 
