@@ -11,7 +11,7 @@ class PrReviewReminder < Formula
 
   def install
     package_dir = buildpath/"homebrew-package"
-    ENV["OUTPUT_DIR"] = package_dir
+    ENV["OUTPUT_DIR"] = package_dir.to_s
     ENV["APP_VERSION"] = version.to_s
     ENV["BUILD_NUMBER"] = version.to_s.scan(/\d+/).first(3).join(".")
     ENV["SWIFT_BUILD_DISABLE_SANDBOX"] = "1"
