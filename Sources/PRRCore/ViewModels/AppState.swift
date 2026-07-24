@@ -42,6 +42,17 @@ public enum AppUpdateStage: Equatable {
     }
 }
 
+public struct RefreshDiagnostic: Sendable, Equatable {
+    public enum Outcome: Sendable, Equatable { case success, failed }
+    public let date: Date
+    public let outcome: Outcome
+    public let itemCount: Int
+    public let retryCount: Int
+    public let reachedSearchLimit: Bool
+    public let rateLimited: Bool
+    public let message: String?
+}
+
 /// A pull request plus its (optional) analysis and fetched details.
 public struct PRItem: Identifiable, Equatable {
     public var pr: PullRequest
@@ -64,6 +75,7 @@ public final class AppState: ObservableObject {
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var lastRun: Date?
     @Published public private(set) var nextRun: Date?
+    @Published public private(set) var lastRefreshDiagnostic: RefreshDiagnostic?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
     @Published public private(set) var settingsStorageDiagnostic: StorageDiagnostic
@@ -323,13 +335,36 @@ public final class AppState: ObservableObject {
         let github = GitHubService(runner: runner, ghPath: ghPath)
         let previousIDs = Set(items.map(\.id))
         do {
-            let prs = try await github.fetchAwaitingReview(settings: settings, login: login)
+            let fetch = try await github.fetchAwaitingReviewResult(
+                settings: settings,
+                login: login
+            )
+            let prs = fetch.pullRequests
             // Fetch only — do NOT auto-analyze. Preserve any existing analysis for PRs
             // that are still open so a manual review isn't discarded on refresh.
             let previous = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
             items = prs.map { pr in previous[pr.id] ?? PRItem(pr: pr) }
+            lastRefreshDiagnostic = RefreshDiagnostic(
+                date: Date(),
+                outcome: .success,
+                itemCount: prs.count,
+                retryCount: fetch.retryCount,
+                reachedSearchLimit: fetch.reachedSearchLimit,
+                rateLimited: false,
+                message: nil
+            )
         } catch {
             lastError = "\(error)"
+            let githubError = error as? GitHubError
+            lastRefreshDiagnostic = RefreshDiagnostic(
+                date: Date(),
+                outcome: .failed,
+                itemCount: items.count,
+                retryCount: max(0, (githubError?.attempts ?? 1) - 1),
+                reachedSearchLimit: false,
+                rateLimited: githubError?.isRateLimited ?? false,
+                message: "\(error)"
+            )
             return
         }
 

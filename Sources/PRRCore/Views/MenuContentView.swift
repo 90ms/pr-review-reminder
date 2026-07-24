@@ -94,6 +94,16 @@ public struct MenuContentView: View {
                     if let next = app.nextRun {
                         Text("\(app.l("next_run")) \(next.formatted(date: .omitted, time: .shortened))")
                     }
+                    if let diagnostic = app.lastRefreshDiagnostic {
+                        if diagnostic.reachedSearchLimit {
+                            Text(app.l("search_limit_warning")).foregroundStyle(.orange)
+                        } else if diagnostic.retryCount > 0 {
+                            Text(String(
+                                format: app.l("github_retried"),
+                                diagnostic.retryCount
+                            ))
+                        }
+                    }
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)

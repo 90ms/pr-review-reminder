@@ -191,6 +191,8 @@ public struct L10n: Sendable {
         "storage_write_failed": "Write failed; the in-memory data is still available",
         "last_saved": "Last saved:",
         "corrupt_backup": "Corrupt data backup:",
+        "search_limit_warning": "Search reached GitHub's 1,000-result limit.",
+        "github_retried": "GitHub reads retried %d time(s).",
         // feedback window
         "fb_title": "Title",
         "fb_body": "Details",
@@ -353,6 +355,8 @@ public struct L10n: Sendable {
         "storage_write_failed": "쓰기 실패 — 메모리의 데이터는 유지됩니다",
         "last_saved": "마지막 저장:",
         "corrupt_backup": "손상 데이터 백업:",
+        "search_limit_warning": "GitHub 검색 결과가 1,000건 상한에 도달했습니다.",
+        "github_retried": "GitHub 조회를 %d회 재시도했습니다.",
         // feedback window
         "fb_title": "제목",
         "fb_body": "내용",

@@ -148,6 +148,40 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertEqual(attempts.value, 2)
     }
 
+    func testFetchResultReportsSuccessfulRetry() async throws {
+        let mock = MockProcessRunner()
+        let attempts = LockedCounter()
+        mock.responder = { _ in
+            attempts.increment() == 1
+                ? CommandResult(exitCode: 1, stdout: "", stderr: "temporary")
+                : CommandResult(
+                    exitCode: 0,
+                    stdout: Fixtures.string("search-prs"),
+                    stderr: ""
+                )
+        }
+        let service = GitHubService(
+            runner: mock,
+            ghPath: "/usr/bin/gh",
+            readRetryDelays: [0]
+        )
+
+        let result = try await service.fetchAwaitingReviewResult(
+            settings: AppSettings(),
+            login: "reviewer"
+        )
+
+        XCTAssertEqual(result.retryCount, 1)
+        XCTAssertEqual(result.pullRequests.count, 2)
+        XCTAssertFalse(result.reachedSearchLimit)
+    }
+
+    func testRateLimitDetection() {
+        XCTAssertTrue(GitHubService.isRateLimitMessage("API rate limit exceeded"))
+        XCTAssertTrue(GitHubService.isRateLimitMessage("secondary RATE LIMIT"))
+        XCTAssertFalse(GitHubService.isRateLimitMessage("repository not found"))
+    }
+
     func testDiffFailureIsNotReturnedAsEmptyDiff() async throws {
         let mock = MockProcessRunner()
         mock.responder = { command in

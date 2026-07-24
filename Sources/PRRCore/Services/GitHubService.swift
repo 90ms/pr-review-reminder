@@ -2,8 +2,20 @@ import Foundation
 
 public struct GitHubError: Error, Sendable, CustomStringConvertible {
     public let message: String
-    public init(_ message: String) { self.message = message }
+    public let attempts: Int
+    public let isRateLimited: Bool
+    public init(_ message: String, attempts: Int = 1, isRateLimited: Bool = false) {
+        self.message = message
+        self.attempts = attempts
+        self.isRateLimited = isRateLimited
+    }
     public var description: String { message }
+}
+
+public struct GitHubFetchResult: Sendable, Equatable {
+    public let pullRequests: [PullRequest]
+    public let retryCount: Int
+    public let reachedSearchLimit: Bool
 }
 
 /// Extra per-PR details fetched on demand (not available from search).
@@ -39,12 +51,19 @@ public final class GitHubService: Sendable {
         self.readRetryDelays = readRetryDelays
     }
 
-    private func runRead(_ command: Command) async throws -> CommandResult {
+    private struct ReadExecution {
+        let result: CommandResult
+        let attempts: Int
+    }
+
+    private func runRead(_ command: Command) async throws -> ReadExecution {
         var lastResult: CommandResult?
         for attempt in 0...readRetryDelays.count {
             do {
                 let result = try await runner.run(command)
-                if result.succeeded { return result }
+                if result.succeeded {
+                    return ReadExecution(result: result, attempts: attempt + 1)
+                }
                 lastResult = result
             } catch is CancellationError {
                 throw CancellationError()
@@ -54,8 +73,20 @@ public final class GitHubService: Sendable {
             guard attempt < readRetryDelays.count else { break }
             try await Task.sleep(nanoseconds: readRetryDelays[attempt])
         }
-        if let lastResult { return lastResult }
+        if let lastResult {
+            let message = lastResult.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw GitHubError(
+                message.isEmpty ? "GitHub read failed." : message,
+                attempts: readRetryDelays.count + 1,
+                isRateLimited: Self.isRateLimitMessage(message)
+            )
+        }
         throw GitHubError("GitHub read failed without a result.")
+    }
+
+    public static func isRateLimitMessage(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("rate limit") || lower.contains("api rate")
     }
 
     // MARK: - Command builders (pure, testable)
@@ -212,7 +243,7 @@ public final class GitHubService: Sendable {
     // MARK: - Async operations
 
     public func currentLogin() async throws -> String {
-        let result = try await runRead(Self.currentLoginCommand(gh: gh))
+        let result = try await runRead(Self.currentLoginCommand(gh: gh)).result
         guard result.succeeded else {
             throw GitHubError("gh not authenticated: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
@@ -226,16 +257,29 @@ public final class GitHubService: Sendable {
     /// request another review after new commits, and an older review must not
     /// hide that renewed request.
     public func fetchAwaitingReview(settings: AppSettings, login: String) async throws -> [PullRequest] {
-        let search = try await runRead(Self.searchPRsCommand(gh: gh, owner: settings.owner, repositories: settings.repositories))
-        guard search.succeeded else {
-            throw GitHubError("gh search failed: \(search.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
-        }
-        return try Self.parsePullRequests(Data(search.stdout.utf8))
+        try await fetchAwaitingReviewResult(settings: settings, login: login).pullRequests
+    }
+
+    public func fetchAwaitingReviewResult(
+        settings: AppSettings,
+        login: String
+    ) async throws -> GitHubFetchResult {
+        let execution = try await runRead(Self.searchPRsCommand(
+            gh: gh,
+            owner: settings.owner,
+            repositories: settings.repositories
+        ))
+        let pullRequests = try Self.parsePullRequests(Data(execution.result.stdout.utf8))
+        return GitHubFetchResult(
+            pullRequests: pullRequests,
+            retryCount: max(0, execution.attempts - 1),
+            reachedSearchLimit: pullRequests.count >= 1_000
+        )
     }
 
     /// Fetches only the head commit SHA (cheap, no AI cost) for cache lookups.
     public func fetchHeadSha(_ pr: PullRequest) async throws -> String {
-        let result = try await runRead(Self.headShaCommand(gh: gh, repository: pr.repository, number: pr.number))
+        let result = try await runRead(Self.headShaCommand(gh: gh, repository: pr.repository, number: pr.number)).result
         guard result.succeeded else {
             throw GitHubError("gh pr view failed: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
@@ -282,12 +326,12 @@ public final class GitHubService: Sendable {
     }
 
     public func fetchDetails(_ pr: PullRequest) async throws -> PRDetails {
-        let meta = try await runRead(Self.detailsCommand(gh: gh, repository: pr.repository, number: pr.number))
+        let meta = try await runRead(Self.detailsCommand(gh: gh, repository: pr.repository, number: pr.number)).result
         guard meta.succeeded else {
             throw GitHubError("gh pr view failed: \(meta.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         let dto = try JSONDecoder().decode(DetailsDTO.self, from: Data(meta.stdout.utf8))
-        let diff = try await runRead(Self.diffCommand(gh: gh, repository: pr.repository, number: pr.number))
+        let diff = try await runRead(Self.diffCommand(gh: gh, repository: pr.repository, number: pr.number)).result
         guard diff.succeeded else {
             throw GitHubError("gh pr diff failed: \(diff.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
