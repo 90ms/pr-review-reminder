@@ -64,6 +64,10 @@ final class AppStateTests: XCTestCase {
     private func makeState(
         settings: AppSettings = AppSettings(notificationsEnabled: false),
         history: HistoryStore = HistoryStore(persistence: AppStateMemoryHistoryPersistence()),
+        scheduleRunStore: ScheduleRunStore = ScheduleRunStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "test.schedule"
+        ),
         responder: @escaping @Sendable (Command) -> CommandResult
     ) async -> (AppState, MockProcessRunner) {
         let keyValues = AppStateMemoryKeyValueStore()
@@ -86,6 +90,7 @@ final class AppStateTests: XCTestCase {
             runner: runner,
             settingsStore: settingsStore,
             history: history,
+            scheduleRunStore: scheduleRunStore,
             autoBootstrap: false
         )
         await state.diagnose()
@@ -151,6 +156,26 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(state.lastError)
         XCTAssertNotNil(state.lastRun)
         XCTAssertFalse(state.isRefreshing)
+    }
+
+    func testScheduledRefreshPersistsSuccessfulRun() async {
+        let memory = AppStateMemoryKeyValueStore()
+        let runs = ScheduleRunStore(store: memory, key: "test.schedule")
+        let (state, _) = await makeState(scheduleRunStore: runs) { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "uncached-sha\n", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refresh(trigger: .scheduled)
+
+        XCTAssertEqual(state.scheduleRuns.first?.outcome, .success)
+        XCTAssertEqual(state.scheduleRuns.first?.itemCount, 1)
+        XCTAssertEqual(runs.all(), state.scheduleRuns)
     }
 
     func testRefreshRestoresMatchingHistoryWithoutRunningAI() async {

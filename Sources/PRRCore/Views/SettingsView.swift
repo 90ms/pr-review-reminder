@@ -72,6 +72,27 @@ public struct SettingsView: View {
                 } else {
                     Stepper(String(format: app.l("every_h"), app.settings.intervalHours), value: $app.settings.intervalHours, in: 1...24)
                 }
+                if !app.scheduleRuns.isEmpty {
+                    Text(app.l("recent_schedule_runs"))
+                        .font(.caption.weight(.semibold))
+                        .padding(.top, 4)
+                    ForEach(app.scheduleRuns.prefix(5)) { run in
+                        HStack(alignment: .top) {
+                            Image(systemName: run.outcome == .success
+                                ? "checkmark.circle.fill"
+                                : "exclamationmark.triangle.fill")
+                                .foregroundStyle(run.outcome == .success ? .green : .orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(run.date.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                Text(scheduleRunMessage(run))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+                }
             }
 
             Section {
@@ -202,6 +223,13 @@ public struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func scheduleRunMessage(_ run: ScheduleRunRecord) -> String {
+        if run.outcome == .success {
+            return String(format: app.l("scheduled_refresh_succeeded"), run.itemCount)
+        }
+        return run.message ?? app.l("scheduled_refresh_unknown_error")
     }
 
     private func storageRow(title: String, diagnostic: StorageDiagnostic) -> some View {

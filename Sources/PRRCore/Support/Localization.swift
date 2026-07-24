@@ -196,6 +196,10 @@ public struct L10n: Sendable {
         "filter_files": "Filter changed files",
         "previous_change": "Previous change",
         "next_change": "Next change",
+        "recent_schedule_runs": "Recent scheduled runs",
+        "scheduled_refresh_succeeded": "%d pull request(s) found",
+        "scheduled_refresh_failed": "Scheduled refresh failed",
+        "scheduled_refresh_unknown_error": "The refresh failed without an error message.",
         // feedback window
         "fb_title": "Title",
         "fb_body": "Details",
@@ -363,6 +367,10 @@ public struct L10n: Sendable {
         "filter_files": "변경 파일 검색",
         "previous_change": "이전 변경",
         "next_change": "다음 변경",
+        "recent_schedule_runs": "최근 예약 실행",
+        "scheduled_refresh_succeeded": "PR %d개 확인",
+        "scheduled_refresh_failed": "예약 새로고침 실패",
+        "scheduled_refresh_unknown_error": "오류 메시지 없이 새로고침에 실패했습니다.",
         // feedback window
         "fb_title": "제목",
         "fb_body": "내용",

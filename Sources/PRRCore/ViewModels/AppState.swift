@@ -53,6 +53,11 @@ public struct RefreshDiagnostic: Sendable, Equatable {
     public let message: String?
 }
 
+public enum RefreshTrigger: Sendable, Equatable {
+    case manual
+    case scheduled
+}
+
 /// A pull request plus its (optional) analysis and fetched details.
 public struct PRItem: Identifiable, Equatable {
     public var pr: PullRequest
@@ -75,6 +80,7 @@ public final class AppState: ObservableObject {
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var lastRun: Date?
     @Published public private(set) var nextRun: Date?
+    @Published public private(set) var scheduleRuns: [ScheduleRunRecord]
     @Published public private(set) var lastRefreshDiagnostic: RefreshDiagnostic?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
@@ -93,6 +99,7 @@ public final class AppState: ObservableObject {
     private let locator: ToolLocator
     private let settingsStore: SettingsStore
     private let history: HistoryStore
+    private let scheduleRunStore: ScheduleRunStore
 
     private var ghPath: String?
     private var claudePath: String?
@@ -106,15 +113,18 @@ public final class AppState: ObservableObject {
     public init(runner: ProcessRunning = SystemProcessRunner(),
                 settingsStore: SettingsStore = SettingsStore(),
                 history: HistoryStore = HistoryStore(),
+                scheduleRunStore: ScheduleRunStore = ScheduleRunStore(),
                 autoBootstrap: Bool = true) {
         self.runner = runner
         self.locator = ToolLocator(runner: runner)
         self.settingsStore = settingsStore
         self.history = history
+        self.scheduleRunStore = scheduleRunStore
         self.settings = settingsStore.load()
         self.settingsStorageDiagnostic = settingsStore.diagnostic
         self.historyStorageDiagnostic = history.diagnostic
         self.historyItems = self.settings.historyEnabled ? history.all() : []
+        self.scheduleRuns = scheduleRunStore.all()
         // Start diagnosis and scheduling at launch, not only when the popover opens.
         // Tests may opt out to drive lifecycle transitions deterministically.
         if autoBootstrap {
@@ -322,10 +332,13 @@ public final class AppState: ObservableObject {
 
     // MARK: - Collection + analysis
 
-    public func refresh() async {
+    public func refresh(trigger: RefreshTrigger = .manual) async {
         guard !isRefreshing else { return }
         guard let ghPath, let status, status.ghAuthenticated, let login = status.ghLogin else {
             lastError = "gh is not ready. Open Settings to check dependencies."
+            if trigger == .scheduled {
+                recordScheduledRun(outcome: .failure, message: lastError)
+            }
             return
         }
         isRefreshing = true
@@ -365,6 +378,9 @@ public final class AppState: ObservableObject {
                 rateLimited: githubError?.isRateLimited ?? false,
                 message: "\(error)"
             )
+            if trigger == .scheduled {
+                recordScheduledRun(outcome: .failure, message: "\(error)")
+            }
             return
         }
 
@@ -398,6 +414,9 @@ public final class AppState: ObservableObject {
             for item in items where item.analysis == nil {
                 await review(item.id, notifyOnComplete: false)
             }
+        }
+        if trigger == .scheduled {
+            recordScheduledRun(outcome: .success)
         }
     }
 
@@ -634,11 +653,30 @@ public final class AppState: ObservableObject {
         let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor [self] in
-                await self.refresh()
+                await self.refresh(trigger: .scheduled)
                 self.scheduleNextRun()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         scheduleTimer = timer
+    }
+
+    private func recordScheduledRun(
+        outcome: ScheduleRunRecord.Outcome,
+        message: String? = nil
+    ) {
+        let record = ScheduleRunRecord(
+            outcome: outcome,
+            itemCount: items.count,
+            message: message
+        )
+        scheduleRunStore.append(record)
+        scheduleRuns = scheduleRunStore.all()
+        if outcome == .failure, settings.notificationsEnabled {
+            Notifier.notify(
+                title: l("scheduled_refresh_failed"),
+                body: message ?? l("scheduled_refresh_unknown_error")
+            )
+        }
     }
 }
