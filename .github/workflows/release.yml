@@ -156,3 +156,53 @@ jobs:
             --generate-notes \
             --notes "$security_note" \
             --verify-tag
+
+      - name: Open Homebrew Formula update pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::notice::HOMEBREW_TAP_TOKEN is not configured; skipping the tap pull request."
+            exit 0
+          fi
+
+          archive="$RUNNER_TEMP/pr-review-reminder-$VERSION.tar.gz"
+          curl --fail --location --retry 3 \
+            "https://github.com/90ms/pr-review-reminder/archive/refs/tags/v$VERSION.tar.gz" \
+            --output "$archive"
+          source_sha="$(shasum -a 256 "$archive" | awk '{print $1}')"
+
+          tap="$RUNNER_TEMP/homebrew-tap"
+          gh repo clone 90ms/homebrew-tap "$tap"
+          branch="automation/pr-review-reminder-$VERSION"
+          if git -C "$tap" ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
+            git -C "$tap" checkout -B "$branch" "origin/$branch"
+          else
+            git -C "$tap" checkout -b "$branch"
+          fi
+          ./Scripts/render-homebrew-formula.sh \
+            "$VERSION" \
+            "$source_sha" \
+            "$tap/Formula/pr-review-reminder.rb"
+          if ! git -C "$tap" diff --quiet -- Formula/pr-review-reminder.rb; then
+            git -C "$tap" add Formula/pr-review-reminder.rb
+            git -C "$tap" \
+              -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "pr-review-reminder $VERSION"
+            git -C "$tap" push origin "$branch"
+          fi
+
+          if [[ "$(gh pr list --repo 90ms/homebrew-tap --head "$branch" --json number --jq length)" != "0" ]]; then
+            echo "Tap pull request already exists for $branch."
+          else
+            gh pr create \
+              --repo 90ms/homebrew-tap \
+              --head "$branch" \
+              --base main \
+              --title "pr-review-reminder $VERSION" \
+              --body "Automated Formula update for 90ms/pr-review-reminder@$GITHUB_REF_NAME. Merge only after tap CI and the release checklist pass."
+          fi
