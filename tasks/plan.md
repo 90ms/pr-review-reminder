@@ -19,7 +19,8 @@
 | UI | 긴 줄 가로 스크롤, 동적 제목, 앱 아이콘, 다음 실행, 기본 접근성 label | build + 수동 확인 대상 |
 | 동시성 | Swift 6 language mode | macOS 15 CI build/test/bundle |
 | 배포 기반 | ad-hoc ZIP/checksum과 선택적 Developer ID 서명·공증 workflow | main CI |
-| Homebrew 준비 | 재사용 가능 패키저, launcher, Formula renderer, tap CI seed | 셸 테스트 + main CI |
+| Homebrew 배포 | 공개 tap, 0.2.1 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
+| 첫 릴리스 | 0.2.1 ad-hoc ZIP/checksum과 Homebrew source 설치 | Release workflow + tap CI |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
@@ -33,18 +34,7 @@
 
 완료 조건: 민감정보가 없는 실제 화면 자료와 수동 검증 체크리스트가 저장소에 포함된다.
 
-### P1 — 첫 정식 릴리스
-
-- 공개 `90ms/homebrew-tap` 저장소를 만들고 seed 파일을 복사한다.
-- 첫 Formula를 렌더링해 source build/audit CI를 통과시킨다.
-- `CHANGELOG`를 버전 섹션으로 확정하고 annotated tag를 push한다.
-- ad-hoc GitHub ZIP과 Homebrew source 설치를 모두 검증한다.
-- Developer ID를 나중에 확보하면 notarization/stapling 경로를 활성화한다.
-
-완료 조건: `brew install`과 `brew upgrade`가 설정·히스토리를 보존하며 성공하고,
-GitHub Release에 버전 ZIP과 checksum이 공개된다.
-
-### P2 — 운영 관찰성
+### P1 — 운영 관찰성
 
 - GitHub rate limit과 재시도 횟수를 사용자에게 이해 가능한 오류로 표시한다.
 - 히스토리 읽기/쓰기/디코딩 실패를 진단 화면에 노출한다.

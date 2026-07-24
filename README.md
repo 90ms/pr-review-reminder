@@ -33,15 +33,15 @@ env -i HOME="$HOME" .build/debug/PRReviewReminder --doctor
 출력 위치와 버전은 패키저가 주입할 수 있다.
 
 ```bash
-OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.2.0 BUILD_NUMBER=20 \
+OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.2.1 BUILD_NUMBER=21 \
   ./Scripts/build-app.sh
 ```
 
 ## 설치와 업데이트
 
 Developer ID가 없는 현재 권장 경로는 Homebrew에서 소스를 직접 빌드하는 개인 tap이다.
-Formula와 tap CI 원본은 준비되어 있지만 `90ms/homebrew-tap` 저장소가 아직 없으므로
-다음 명령은 tap 저장소를 공개한 뒤 활성화된다.
+공개 [`90ms/homebrew-tap`](https://github.com/90ms/homebrew-tap)에서 설치와 업데이트를
+제공한다.
 
 ```bash
 brew tap 90ms/tap

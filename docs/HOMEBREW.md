@@ -22,15 +22,18 @@ Formula는 태그 source tarball을 SHA-256으로 검증하고 Swift release bui
 관리한다. 설정과 히스토리는 Application Support에 있으므로 `brew upgrade` 후에도
 유지된다.
 
-## 최초 tap 생성
+## 현재 배포 상태
 
-1. GitHub에 공개 `90ms/homebrew-tap` 저장소를 만든다.
-2. 이 저장소의 `packaging/homebrew/.github`를 tap의 `.github`로 복사한다.
-3. 첫 릴리스 태그와 source tarball SHA를 준비한다.
-4. Formula를 렌더링한다.
+공개 [`90ms/homebrew-tap`](https://github.com/90ms/homebrew-tap)의 Formula는
+`v0.2.1`을 제공한다. tap CI에서 source install, `brew test`,
+`brew audit --strict`를 통과했다.
+
+## 관리자의 Formula 갱신
+
+새 릴리스 태그와 source tarball SHA를 준비한 뒤 Formula를 렌더링한다.
 
 ```bash
-version=0.2.0
+version=0.2.1
 curl -L \
   "https://github.com/90ms/pr-review-reminder/archive/refs/tags/v${version}.tar.gz" \
   -o "/tmp/pr-review-reminder-${version}.tar.gz"
@@ -42,7 +45,8 @@ sha="$(shasum -a 256 "/tmp/pr-review-reminder-${version}.tar.gz" | awk '{print $
   "/path/to/homebrew-tap/Formula/pr-review-reminder.rb"
 ```
 
-5. tap CI에서 source install, `brew test`, `brew audit --strict`를 통과시킨다.
+렌더링 결과를 tap 저장소에 반영하고 source install, `brew test`,
+`brew audit --strict`가 모두 통과하는지 확인한다.
 
 ## 사용자 명령
 
