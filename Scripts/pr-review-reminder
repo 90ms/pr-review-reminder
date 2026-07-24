@@ -1,0 +1,118 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_NAME="PR Review Reminder.app"
+
+resolve_formula_app() {
+    if [[ -n "${PRR_APP_PATH:-}" ]]; then
+        printf '%s\n' "$PRR_APP_PATH"
+        return
+    fi
+
+    if command -v brew >/dev/null 2>&1; then
+        local formula_prefix
+        if formula_prefix="$(brew --prefix pr-review-reminder 2>/dev/null)"; then
+            local brewed_app="$formula_prefix/libexec/$APP_NAME"
+            if [[ -d "$brewed_app" ]]; then
+                printf '%s\n' "$brewed_app"
+                return
+            fi
+        fi
+    fi
+
+    local script_path="$0"
+    while [[ -L "$script_path" ]]; do
+        local link_target
+        link_target="$(readlink "$script_path")"
+        if [[ "$link_target" = /* ]]; then
+            script_path="$link_target"
+        else
+            script_path="$(dirname "$script_path")/$link_target"
+        fi
+    done
+    local script_dir
+    script_dir="$(cd "$(dirname "$script_path")" && pwd -P)"
+    printf '%s\n' "$script_dir/../libexec/$APP_NAME"
+}
+
+APP_PATH="$(resolve_formula_app)"
+APP_EXECUTABLE="$APP_PATH/Contents/MacOS/PRReviewReminder"
+APPLICATIONS_DIR="${PRR_APPLICATIONS_DIR:-$HOME/Applications}"
+APP_LINK="$APPLICATIONS_DIR/$APP_NAME"
+
+require_app() {
+    if [[ ! -x "$APP_EXECUTABLE" ]]; then
+        echo "PR Review Reminder app not found at: $APP_PATH" >&2
+        exit 1
+    fi
+}
+
+install_link() {
+    require_app
+    mkdir -p "$APPLICATIONS_DIR"
+    if [[ -L "$APP_LINK" ]]; then
+        if [[ "$(readlink "$APP_LINK")" == "$APP_PATH" ]]; then
+            echo "Already linked: $APP_LINK"
+            return
+        fi
+        echo "Refusing to replace an existing symlink: $APP_LINK" >&2
+        exit 2
+    fi
+    if [[ -e "$APP_LINK" ]]; then
+        echo "Refusing to replace an existing app: $APP_LINK" >&2
+        exit 2
+    fi
+    ln -s "$APP_PATH" "$APP_LINK"
+    echo "Linked: $APP_LINK -> $APP_PATH"
+}
+
+uninstall_link() {
+    if [[ ! -L "$APP_LINK" ]]; then
+        echo "No managed app symlink found at: $APP_LINK"
+        return
+    fi
+    if [[ "$(readlink "$APP_LINK")" != "$APP_PATH" ]]; then
+        echo "Refusing to remove a symlink managed by something else: $APP_LINK" >&2
+        exit 2
+    fi
+    rm "$APP_LINK"
+    echo "Removed symlink: $APP_LINK"
+}
+
+case "${1:-}" in
+    "")
+        require_app
+        open "$APP_PATH"
+        ;;
+    --doctor)
+        require_app
+        exec "$APP_EXECUTABLE" --doctor
+        ;;
+    --install-app)
+        install_link
+        ;;
+    --uninstall-app)
+        uninstall_link
+        ;;
+    --print-app-path)
+        printf '%s\n' "$APP_PATH"
+        ;;
+    -h|--help)
+        cat <<'USAGE'
+Usage: pr-review-reminder [option]
+
+Without an option, opens the menu-bar app.
+
+Options:
+  --doctor         Diagnose gh and AI CLI discovery
+  --install-app    Link the app into ~/Applications
+  --uninstall-app  Remove only the managed ~/Applications symlink
+  --print-app-path Print the installed app bundle path
+  --help           Show this help
+USAGE
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        exit 2
+        ;;
+esac

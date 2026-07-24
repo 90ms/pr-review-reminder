@@ -31,6 +31,9 @@ jobs:
       - name: Test
         run: swift test
 
+      - name: Test Homebrew launcher
+        run: ./Tests/Scripts/LauncherTests.sh
+
       - name: Assemble application bundle
         env:
           OUTPUT_DIR: ${{ runner.temp }}/prr-package
