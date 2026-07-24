@@ -408,9 +408,10 @@ public final class AppState: ObservableObject {
         let next = Scheduler.nextRunDate(after: Date(), settings: settings)
         let interval = max(60, next.timeIntervalSinceNow)
         let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                await self?.refresh()
-                self?.scheduleNextRun()
+            guard let self else { return }
+            Task { @MainActor [self] in
+                await refresh()
+                scheduleNextRun()
             }
         }
         RunLoop.main.add(timer, forMode: .common)

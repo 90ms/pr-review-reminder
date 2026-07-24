@@ -2,7 +2,6 @@ import SwiftUI
 
 public struct MenuContentView: View {
     @EnvironmentObject var app: AppState
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
 
     private let maxListHeight: CGFloat = 620
@@ -100,7 +99,11 @@ public struct MenuContentView: View {
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }.buttonStyle(.borderless).font(.caption)
             Button(app.l("settings")) {
-                openSettings()
+                NSApplication.shared.sendAction(
+                    Selector(("showSettingsWindow:")),
+                    to: nil,
+                    from: nil
+                )
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }.buttonStyle(.borderless).font(.caption)
             Button(app.l("quit")) { NSApplication.shared.terminate(nil) }.buttonStyle(.borderless).font(.caption)
