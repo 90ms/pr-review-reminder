@@ -19,8 +19,8 @@
 | UI | 긴 줄 가로 스크롤, 동적 제목, 앱 아이콘, 다음 실행, 기본 접근성 label | build + 수동 확인 대상 |
 | 동시성 | Swift 6 language mode | macOS 15 CI build/test/bundle |
 | 배포 기반 | ad-hoc ZIP/checksum과 선택적 Developer ID 서명·공증 workflow | main CI |
-| Homebrew 배포 | 공개 tap, 0.2.1 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
-| 첫 릴리스 | 0.2.1 ad-hoc ZIP/checksum과 Homebrew source 설치 | Release workflow + tap CI |
+| Homebrew 배포 | 공개 tap, 0.2.2 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
+| 최신 릴리스 | 0.2.2 ad-hoc ZIP/checksum과 Homebrew source 설치 | Release workflow + tap CI |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
