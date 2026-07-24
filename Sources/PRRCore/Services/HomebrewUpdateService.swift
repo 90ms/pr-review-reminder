@@ -12,14 +12,21 @@ public struct AppUpdateInfo: Sendable, Equatable {
     }
 }
 
+public enum HomebrewUpdateOperation: String, Sendable, Equatable {
+    case refreshTap
+    case readVersion
+    case upgradeFormula
+    case relinkApplication
+}
+
 public enum HomebrewUpdateError: LocalizedError, Sendable, Equatable {
-    case commandFailed(String)
+    case commandFailed(operation: HomebrewUpdateOperation, message: String)
     case invalidResponse
     case notInstalled
 
     public var errorDescription: String? {
         switch self {
-        case .commandFailed(let message): return message
+        case .commandFailed(_, let message): return message
         case .invalidResponse: return "Homebrew returned an invalid version response."
         case .notInstalled: return "PR Review Reminder is not installed with Homebrew."
         }
@@ -91,38 +98,64 @@ public struct HomebrewUpdateService: Sendable {
     }
 
     public func check(brew: String, bundleVersion: String?) async throws -> AppUpdateInfo {
+        try await refreshDefinitions(brew: brew)
+        return try await readInfo(brew: brew, bundleVersion: bundleVersion)
+    }
+
+    public func refreshDefinitions(brew: String) async throws {
         let update = try await runner.run(Self.updateCommand(brew: brew))
         guard update.succeeded else {
             throw HomebrewUpdateError.commandFailed(
-                update.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                operation: .refreshTap,
+                message: Self.failureMessage(update)
             )
         }
+    }
+
+    public func readInfo(brew: String, bundleVersion: String?) async throws -> AppUpdateInfo {
         let info = try await runner.run(Self.infoCommand(brew: brew))
         guard info.succeeded else {
             throw HomebrewUpdateError.commandFailed(
-                info.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                operation: .readVersion,
+                message: Self.failureMessage(info)
             )
         }
         return try Self.parseInfo(info.stdout, bundleVersion: bundleVersion)
     }
 
     public func upgrade(brew: String) async throws {
+        try await upgradeFormula(brew: brew)
+        try await relinkApplication(brew: brew)
+    }
+
+    public func upgradeFormula(brew: String) async throws {
         let result = try await runner.run(Self.upgradeCommand(brew: brew))
         guard result.succeeded else {
             throw HomebrewUpdateError.commandFailed(
-                result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                operation: .upgradeFormula,
+                message: Self.failureMessage(result)
             )
         }
+    }
 
+    public func relinkApplication(brew: String) async throws {
         let launcher = Self.launcherPath(for: brew)
         let relink = try await runner.run(
             Command(executable: launcher, arguments: ["--install-app"], timeout: 30)
         )
         guard relink.succeeded else {
             throw HomebrewUpdateError.commandFailed(
-                relink.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                operation: .relinkApplication,
+                message: Self.failureMessage(relink)
             )
         }
+    }
+
+    private static func failureMessage(_ result: CommandResult) -> String {
+        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stderr.isEmpty { return stderr }
+        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stdout.isEmpty ? "Homebrew command failed." : stdout
     }
 
     private static func normalized(_ version: String?) -> String? {

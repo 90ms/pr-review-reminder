@@ -84,4 +84,44 @@ final class HomebrewUpdateServiceTests: XCTestCase {
         ])
         XCTAssertEqual(mock.commands[1].arguments, ["--install-app"])
     }
+
+    func testRefreshFailureIdentifiesItsOperation() async {
+        let mock = MockProcessRunner()
+        mock.defaultResult = CommandResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "network unavailable"
+        )
+        let service = HomebrewUpdateService(runner: mock)
+
+        do {
+            try await service.refreshDefinitions(brew: "/opt/homebrew/bin/brew")
+            XCTFail("Expected refresh to fail")
+        } catch {
+            XCTAssertEqual(
+                error as? HomebrewUpdateError,
+                .commandFailed(operation: .refreshTap, message: "network unavailable")
+            )
+        }
+    }
+
+    func testRelinkFailureIdentifiesPartialUpdate() async {
+        let mock = MockProcessRunner()
+        mock.defaultResult = CommandResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "link conflict"
+        )
+        let service = HomebrewUpdateService(runner: mock)
+
+        do {
+            try await service.relinkApplication(brew: "/opt/homebrew/bin/brew")
+            XCTFail("Expected relink to fail")
+        } catch {
+            XCTAssertEqual(
+                error as? HomebrewUpdateError,
+                .commandFailed(operation: .relinkApplication, message: "link conflict")
+            )
+        }
+    }
 }

@@ -19,6 +19,25 @@ public enum DetailLoadState: Equatable {
     case failed(String)
 }
 
+public enum AppUpdateStage: Equatable {
+    case idle
+    case refreshingTap
+    case readingVersion
+    case upgradingFormula
+    case relinkingApplication
+    case restartRequired
+    case failed(operation: HomebrewUpdateOperation?, message: String)
+
+    public var isBusy: Bool {
+        switch self {
+        case .refreshingTap, .readingVersion, .upgradingFormula, .relinkingApplication:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 /// A pull request plus its (optional) analysis and fetched details.
 public struct PRItem: Identifiable, Equatable {
     public var pr: PullRequest
@@ -44,9 +63,7 @@ public final class AppState: ObservableObject {
     @Published public var lastError: String?
     @Published public var settings: AppSettings
     @Published public private(set) var updateInfo: AppUpdateInfo?
-    @Published public private(set) var isCheckingUpdate = false
-    @Published public private(set) var isInstallingUpdate = false
-    @Published public private(set) var updateMessage: String?
+    @Published public private(set) var updateStage: AppUpdateStage = .idle
     /// PR currently shown in the detail window.
     @Published public var selectedItemID: String?
     /// Persisted review history, newest first.
@@ -181,43 +198,54 @@ public final class AppState: ObservableObject {
     }
 
     public func checkForUpdates() async {
-        guard !isCheckingUpdate, !isInstallingUpdate else { return }
+        guard !updateStage.isBusy else { return }
         guard let brewPath else {
-            updateMessage = l("update_homebrew_only")
+            updateStage = .failed(operation: nil, message: l("update_homebrew_only"))
             return
         }
-        isCheckingUpdate = true
-        updateMessage = nil
-        defer { isCheckingUpdate = false }
+        let service = HomebrewUpdateService(runner: runner)
         do {
-            updateInfo = try await HomebrewUpdateService(runner: runner).check(
+            updateStage = .refreshingTap
+            try await service.refreshDefinitions(brew: brewPath)
+            updateStage = .readingVersion
+            updateInfo = try await service.readInfo(
                 brew: brewPath,
                 bundleVersion: Bundle.main.object(
                     forInfoDictionaryKey: "CFBundleShortVersionString"
                 ) as? String
             )
+            updateStage = .idle
         } catch {
-            updateMessage = error.localizedDescription
+            updateStage = updateFailure(error)
         }
     }
 
     public func installUpdate() async {
-        guard !isCheckingUpdate, !isInstallingUpdate else { return }
+        guard !updateStage.isBusy else { return }
         guard let brewPath, let info = updateInfo, info.updateAvailable else { return }
-        isInstallingUpdate = true
-        updateMessage = nil
-        defer { isInstallingUpdate = false }
+        let service = HomebrewUpdateService(runner: runner)
         do {
-            try await HomebrewUpdateService(runner: runner).upgrade(brew: brewPath)
+            updateStage = .upgradingFormula
+            try await service.upgradeFormula(brew: brewPath)
+            updateStage = .relinkingApplication
+            try await service.relinkApplication(brew: brewPath)
             updateInfo = AppUpdateInfo(
                 currentVersion: info.latestVersion,
                 latestVersion: info.latestVersion,
                 updateAvailable: false
             )
-            updateMessage = l("update_restart")
+            updateStage = .restartRequired
         } catch {
-            updateMessage = error.localizedDescription
+            updateStage = updateFailure(error)
         }
+    }
+
+    private func updateFailure(_ error: Error) -> AppUpdateStage {
+        if let updateError = error as? HomebrewUpdateError,
+           case let .commandFailed(operation, message) = updateError {
+            return .failed(operation: operation, message: message)
+        }
+        return .failed(operation: nil, message: error.localizedDescription)
     }
 
     // MARK: - Collection + analysis

@@ -126,27 +126,34 @@ public struct SettingsView: View {
                         Button(app.l("install_update")) {
                             Task { await app.installUpdate() }
                         }
-                        .disabled(app.isInstallingUpdate)
+                        .disabled(app.updateStage.isBusy)
                     } else {
                         Label(app.l("up_to_date"), systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }
                 }
-                Button(app.isCheckingUpdate ? app.l("checking_update") : app.l("check_update")) {
+                Button(app.l("check_update")) {
                     Task { await app.checkForUpdates() }
                 }
-                .disabled(app.isCheckingUpdate || app.isInstallingUpdate)
-                if app.isInstallingUpdate {
+                .disabled(app.updateStage.isBusy)
+                if app.updateStage.isBusy {
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text(app.l("installing_update"))
+                        Text(updateStageLabel)
                     }
                 }
-                if let message = app.updateMessage {
+                if case let .failed(operation, message) = app.updateStage {
+                    Text(operation.map(updateFailureLabel) ?? app.l("update_failed"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
                     Text(message)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                } else if app.updateStage == .restartRequired {
+                    Text(app.l("update_restart"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -171,6 +178,25 @@ public struct SettingsView: View {
                     app.settings.reviewSkill = text
                 }
             }
+        }
+    }
+
+    private var updateStageLabel: String {
+        switch app.updateStage {
+        case .refreshingTap: return app.l("update_stage_refresh")
+        case .readingVersion: return app.l("update_stage_version")
+        case .upgradingFormula: return app.l("update_stage_build")
+        case .relinkingApplication: return app.l("update_stage_link")
+        default: return ""
+        }
+    }
+
+    private func updateFailureLabel(_ operation: HomebrewUpdateOperation) -> String {
+        switch operation {
+        case .refreshTap: return app.l("update_failed_refresh")
+        case .readVersion: return app.l("update_failed_version")
+        case .upgradeFormula: return app.l("update_failed_build")
+        case .relinkApplication: return app.l("update_failed_link")
         }
     }
 
