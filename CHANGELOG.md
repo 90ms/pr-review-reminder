@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terminate the old instance automatically, while retaining a manual retry when
   relaunch fails.
 
+### Added
+
+- The next launch detects an unclean previous session and offers a privacy-safe
+  diagnostic issue draft; GitHub submission still requires explicit user action.
+
 ## [0.3.0] - 2026-07-24
 
 ### Added
