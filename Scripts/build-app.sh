@@ -19,7 +19,7 @@ if [[ -z "$DIST_DIR" || "$DIST_DIR" == "/" || "$DIST_DIR" == "$ROOT" ]]; then
     exit 2
 fi
 APP_DIR="$DIST_DIR/$APP_NAME.app"
-APP_VERSION="${APP_VERSION:-0.2.0}"
+APP_VERSION="${APP_VERSION:-0.2.1}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
 echo "==> Building release binary"
@@ -30,13 +30,6 @@ if [[ "${SWIFT_BUILD_DISABLE_SANDBOX:-0}" == "1" ]]; then
 fi
 swift "${SWIFT_ARGS[@]}"
 
-for tool in qlmanage sips iconutil; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "Required macOS packaging tool not found: $tool" >&2
-        exit 1
-    fi
-done
-
 echo "==> Assembling $APP_DIR"
 mkdir -p "$DIST_DIR"
 rm -rf "$APP_DIR"
@@ -45,23 +38,8 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BUILD_DIR/$EXECUTABLE" "$APP_DIR/Contents/MacOS/$EXECUTABLE"
 
-echo "==> Generating app icon"
-ICON_WORK="$(mktemp -d "${TMPDIR:-/tmp}/pr-review-reminder-icon.XXXXXX")"
-trap 'rm -rf "$ICON_WORK"' EXIT
-qlmanage -t -s 1024 -o "$ICON_WORK" "$ROOT/Assets/AppIcon.svg" >/dev/null 2>&1
-MASTER_ICON="$ICON_WORK/AppIcon.svg.png"
-ICONSET="$ICON_WORK/AppIcon.iconset"
-mkdir -p "$ICONSET"
-for spec in \
-    "16 icon_16x16.png" "32 icon_16x16@2x.png" \
-    "32 icon_32x32.png" "64 icon_32x32@2x.png" \
-    "128 icon_128x128.png" "256 icon_128x128@2x.png" \
-    "256 icon_256x256.png" "512 icon_256x256@2x.png" \
-    "512 icon_512x512.png" "1024 icon_512x512@2x.png"; do
-    read -r size filename <<< "$spec"
-    sips -z "$size" "$size" "$MASTER_ICON" --out "$ICONSET/$filename" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/AppIcon.icns"
+echo "==> Installing app icon"
+cp "$ROOT/Assets/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

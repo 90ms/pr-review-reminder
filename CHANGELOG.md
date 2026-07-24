@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-24
+
+### Fixed
+
+- Homebrew source builds now install the bundled ICNS asset without invoking
+  sandbox-incompatible Quick Look tooling.
+
 ## [0.2.0] - 2026-07-24
 
 ### Added
@@ -46,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editable inline comments, review preview, and explicit publishing controls.
 - Review history, cached results, scheduling, notifications, and localization.
 
-[Unreleased]: https://github.com/90ms/pr-review-reminder/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/90ms/pr-review-reminder/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/90ms/pr-review-reminder/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/90ms/pr-review-reminder/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/90ms/pr-review-reminder/releases/tag/v0.1.0
