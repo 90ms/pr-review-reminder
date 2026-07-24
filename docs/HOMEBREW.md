@@ -50,11 +50,19 @@ sha="$(shasum -a 256 "/tmp/pr-review-reminder-${version}.tar.gz" | awk '{print $
 
 ## 사용자 명령
 
+Homebrew 6 이상에서는 정규화된 이름으로 설치해 이 Formula만 신뢰한다.
+
 ```bash
-brew tap 90ms/tap
-brew install pr-review-reminder
+brew install 90ms/tap/pr-review-reminder
 pr-review-reminder --install-app
 pr-review-reminder
+```
+
+이미 tap을 추가한 뒤 신뢰 오류가 발생했다면 다음과 같이 개별 Formula를 신뢰한다.
+
+```bash
+brew trust --formula 90ms/tap/pr-review-reminder
+brew install pr-review-reminder
 ```
 
 업데이트:

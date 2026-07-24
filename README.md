@@ -1,157 +1,223 @@
 # PR Review Reminder
 
 [![CI](https://github.com/90ms/pr-review-reminder/actions/workflows/ci.yml/badge.svg)](https://github.com/90ms/pr-review-reminder/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/90ms/pr-review-reminder)](https://github.com/90ms/pr-review-reminder/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-![PR Review Reminder icon](Assets/AppIcon.svg)
+<img src="Assets/AppIcon.svg" alt="PR Review Reminder 아이콘" width="128">
 
-macOS 메뉴바 앱. 내가 리뷰어로 지정됐지만 아직 리뷰하지 않은 PR을 정해진 시간에 모아,
-`claude`/`codex` CLI로 요약·코드리뷰하고, 미리보기로 확인한 뒤 인라인 코멘트/Approve를 남긴다.
+리뷰 요청을 놓치지 않고, AI가 만든 리뷰 초안을 직접 확인한 뒤 게시하는 macOS 메뉴바
+앱입니다. GitHub 작업은 `gh` CLI에, 분석은 `claude` 또는 `codex` CLI에 위임하므로
+앱이 토큰이나 API 키를 저장하지 않습니다.
 
-- 인증은 `gh` CLI에, AI는 `claude`/`codex` CLI에 위임한다. **앱은 토큰/API 키를 저장하지 않는다.**
-- 모든 게시(코멘트/Approve/이슈)는 **미리보기 후 사용자가 버튼을 눌러야만** 실행된다.
-- 리뷰 결과는 히스토리에 저장되어, 같은 커밋은 **토큰 재소비 없이 복원**된다.
+- 리뷰 요청된 열린 PR을 수집하고 일정에 따라 다시 확인합니다.
+- PR 요약, 리뷰 포인트와 인라인 코멘트 초안을 생성합니다.
+- Split/Unified diff에서 초안을 편집한 뒤 명시적으로 게시합니다.
+- 동일한 head commit의 결과를 복원해 불필요한 토큰 소비를 줄입니다.
+- 리뷰 히스토리, 사용량·비용 추정과 로컬 토큰 예산을 제공합니다.
 
-## 요구 사항
+> AI 결과는 초안입니다. 앱은 코멘트, 승인 또는 이슈를 자동으로 게시하지 않으며,
+> 항상 사용자의 미리보기와 명시적인 제출 동작을 요구합니다.
 
-- macOS 14+
-- Swift 6.1+ / Xcode 16.4+ (빌드용)
-- [`gh`](https://cli.github.com) — `gh auth login`으로 로그인되어 있어야 함
-- `claude` 또는 `codex` CLI 중 하나 이상 (개인 구독 재사용)
+## 설치
 
-## 빌드 & 실행
+### 요구 사항
+
+- macOS 14 Sonoma 이상
+- Xcode 16.4 이상 — Homebrew가 앱을 로컬에서 소스 빌드할 때 사용
+- [`gh`](https://cli.github.com) CLI 로그인
+- `claude` 또는 `codex` CLI 중 하나 이상과 해당 CLI 로그인
 
 ```bash
-swift build            # 개발 빌드
-swift test             # 단위 테스트
-./Scripts/build-app.sh # dist/PR Review Reminder.app 조립
-open "dist/PR Review Reminder.app"
-
-# CLI 탐지 진단 (Finder 실행 환경 재현)
-env -i HOME="$HOME" .build/debug/PRReviewReminder --doctor
+gh auth login
+gh auth status
 ```
 
-출력 위치와 버전은 패키저가 주입할 수 있다.
+### Homebrew
+
+Developer ID 없이 배포하므로 공개
+[`90ms/homebrew-tap`](https://github.com/90ms/homebrew-tap)에서 소스를 받아 사용자의
+Mac에서 빌드합니다.
+
+Homebrew 6 이상에서는 비공식 tap의 코드를 실행하기 전에 신뢰 범위를 확인합니다.
+전체 tap 대신 이 Formula 하나만 신뢰하도록 정규화된 이름으로 설치하는 방식을
+권장합니다.
+
+```bash
+brew install 90ms/tap/pr-review-reminder
+pr-review-reminder --install-app
+pr-review-reminder
+```
+
+이미 `brew tap 90ms/tap`을 실행했고 신뢰 오류가 발생했다면:
+
+```bash
+brew trust --formula 90ms/tap/pr-review-reminder
+brew install pr-review-reminder
+```
+
+`--install-app`은 Homebrew Cellar의 앱을 `~/Applications/PR Review Reminder.app`에서
+열 수 있도록 안전한 symlink를 만듭니다. 기존 실제 앱이나 다른 대상을 가리키는
+symlink는 덮어쓰지 않습니다.
+
+### 업데이트와 제거
+
+```bash
+# 업데이트
+brew update
+brew upgrade pr-review-reminder
+
+# 제거
+pr-review-reminder --uninstall-app
+brew uninstall pr-review-reminder
+```
+
+제거해도 사용자 설정과 히스토리는 자동으로 삭제하지 않습니다.
+
+## 첫 실행
+
+설치 상태와 필수 CLI 탐지를 먼저 확인할 수 있습니다.
+
+```bash
+pr-review-reminder --doctor
+```
+
+진단이 통과하면 `pr-review-reminder`를 실행합니다. 메뉴바 오른쪽의 체크리스트
+아이콘을 누르고 설정에서 다음 항목을 확인하세요.
+
+1. 리뷰를 찾을 GitHub owner/org와 선택적 repository 목록
+2. 사용할 AI 도구(`claude` 또는 `codex`)와 리뷰 출력 언어
+3. 수동 수집 또는 매일/주기별 스케줄
+4. 히스토리 보존 기간, Codex 단가와 선택적 로컬 토큰 예산
+
+## 사용 흐름
+
+1. **새로고침**으로 리뷰 대기 PR을 수집합니다. 이 단계는 AI 리뷰를 실행하거나
+   GitHub에 쓰지 않습니다.
+2. PR 카드에서 **코드 리뷰**를 눌러 AI 초안을 생성합니다.
+3. **자세히 보기**에서 요약, 리뷰 포인트, Split/Unified diff와 인라인 코멘트를
+   검토·편집합니다.
+4. 제출 미리보기에서 코멘트만 남기거나 코멘트와 함께 승인할지 선택합니다.
+5. **히스토리**에서 과거 상세/diff를 열거나 현재 head를 가져와 다시 리뷰합니다.
+
+## 주요 기능
+
+| 영역 | 내용 |
+|---|---|
+| PR 수집 | `review-requested:@me` 기반, owner/repository 범위 설정, 최대 1,000건 검색 |
+| AI 리뷰 | Claude/Codex CLI, 사용자 프롬프트·리뷰 규칙, 10분 timeout과 취소 |
+| Diff | Split/Unified 보기, 긴 줄 가로 스크롤, 인라인 초안 편집 |
+| 게시 안전 | 미리보기, 게시 직전 head SHA 재확인, 단일 GitHub review 제출 |
+| 히스토리 | 상세/diff 저장, 같은 head 결과 복원, 보존 기간과 전체 삭제 |
+| 사용량 | Claude 보고 비용, Codex 설정 단가 기반 추정, 기간별 로컬 토큰 예산 |
+| 자동화 | 매일 또는 N시간 간격 수집, 시스템 알림, 선택적 자동 분석 |
+| 언어 | 앱 UI와 리뷰 출력 언어를 독립적으로 설정 |
+| 피드백 | 내용을 AI로 정돈하고 사용자 확인 후 GitHub 이슈 등록 |
+
+## 데이터와 보안
+
+- 인증 정보는 저장하지 않고 설치된 CLI의 인증 세션을 사용합니다.
+- 히스토리를 켜면 PR 본문, diff, AI 결과와 사용량을
+  `~/Library/Application Support/PRReviewReminder/history.json`에 저장합니다.
+- 히스토리 저장을 끄거나 보존 기간을 설정하고 앱에서 전체 삭제할 수 있습니다.
+- GitHub 쓰기 명령은 자동 재시도하지 않으며 사용자의 제출 동작으로만 시작됩니다.
+- Formula는 HTTPS 태그 소스와 고정 SHA-256을 사용하고 tap CI에서 소스 설치,
+  `brew test`, strict audit를 검증합니다.
+
+## 문제 해결
+
+### `untrusted tap` 오류
+
+Homebrew 6의 공급망 보호 기능입니다. 필요한 Formula만 신뢰한 뒤 다시 설치하세요.
+
+```bash
+brew trust --formula 90ms/tap/pr-review-reminder
+brew install pr-review-reminder
+```
+
+전체 tap을 신뢰하는 `brew trust 90ms/tap`도 가능하지만 현재와 미래의 모든 Formula를
+신뢰하므로 권장 범위보다 넓습니다. 자세한 내용은
+[Homebrew Tap Trust](https://docs.brew.sh/Tap-Trust)를 참고하세요.
+
+### 앱에서 `gh`, `claude`, `codex`를 찾지 못함
+
+터미널과 GUI 앱의 `PATH`가 다를 수 있습니다. 진단 결과와 실제 설치 위치를 확인하세요.
+
+```bash
+pr-review-reminder --doctor
+command -v gh
+command -v claude
+command -v codex
+```
+
+앱은 로그인 셸과 잘 알려진 Homebrew/npm 설치 경로를 함께 탐색합니다.
+
+### 앱은 열려 있지만 창이 보이지 않음
+
+이 앱은 Dock 대신 메뉴바에서 동작합니다. 메뉴바 오른쪽의 체크리스트 아이콘을
+확인하세요.
+
+## 소스에서 개발
+
+```bash
+git clone https://github.com/90ms/pr-review-reminder.git
+cd pr-review-reminder
+
+swift build
+swift test
+./Scripts/build-app.sh
+open "dist/PR Review Reminder.app"
+```
+
+패키징 출력과 버전은 환경 변수로 주입할 수 있습니다.
 
 ```bash
 OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.2.1 BUILD_NUMBER=21 \
   ./Scripts/build-app.sh
 ```
 
-## 설치와 업데이트
+## 아키텍처
 
-Developer ID가 없는 현재 권장 경로는 Homebrew에서 소스를 직접 빌드하는 개인 tap이다.
-공개 [`90ms/homebrew-tap`](https://github.com/90ms/homebrew-tap)에서 설치와 업데이트를
-제공한다.
-
-```bash
-brew tap 90ms/tap
-brew install pr-review-reminder
-pr-review-reminder --install-app
-
-brew update
-brew upgrade pr-review-reminder
+```mermaid
+flowchart LR
+    GH["gh CLI"] --> Services["GitHub · AI · History services"]
+    AI["claude / codex CLI"] --> Services
+    Services --> State["AppState orchestration"]
+    State --> Views["Menu · Detail · Diff · History · Settings"]
+    Views -->|명시적 제출| State
 ```
 
-launcher는 앱 실행, `--doctor`, 설치 경로 출력과 `~/Applications` symlink만 관리한다.
-기존 실제 앱이나 다른 대상의 symlink는 덮어쓰거나 삭제하지 않는다. 준비·검증 절차는
-[Homebrew 배포 가이드](docs/HOMEBREW.md)를 참고한다.
+핵심 로직은 `PRRCore`에 있고 실행 대상은 얇은 macOS 앱 진입점으로 유지합니다.
 
-메뉴바 오른쪽에 체크리스트 아이콘(대기 PR 개수 배지)이 뜬다. 클릭하면 팝오버가 열린다.
-
-## 사용 흐름
-
-1. 팝오버의 **↻ 새로고침** → 리뷰 대기 PR 수집 (수집만, 자동 리뷰 아님).
-2. PR 카드의 **코드 리뷰** → AI가 요약·리뷰포인트·인라인 코멘트 초안 생성 (완료 시 알림 + 토큰/비용 표시).
-3. **자세히 보기** → 큰 창에서 요약·리뷰포인트 + **Split/Unified diff**(좌 원본 / 우 변경) 확인, 인라인 코멘트 편집.
-4. 제출 시 **미리보기 시트** → **제출**(코멘트만) 또는 **코멘트 남기고 승인**(머지 무방 문구와 함께 Approve).
-5. **히스토리** → 과거 리뷰 목록 + 누적 토큰·비용 집계.
-   저장된 상세/diff를 다시 열거나 현재 head를 가져와 재리뷰할 수 있다.
-6. **의견 남기기** → 입력 → (에이전트로 정돈) → GitHub 이슈 등록 커맨드 구성.
-
-## 주요 기능
-
-- **수집**: `review-requested:@me` & 아직 내가 리뷰하지 않은 열린 PR (대상 org/repo 설정 가능).
-- **온디맨드 코드리뷰**: PR별 수동 실행이 기본. 설정에서 "PR 발견 시 자동 코드리뷰"로 전환 가능.
-- **토큰/비용 표기**: claude는 보고된 실제 비용, codex는 설정 단가로 추정.
-- **로컬 리뷰 예산**: 최근 N일 히스토리 토큰을 기준으로 새 AI 리뷰 시작을 제한.
-- **히스토리 & 캐시 복원**: 완료 리뷰를 저장하고, head SHA가 같으면 토큰 없이 복원. 누적 사용량 집계.
-- **안전한 게시**: 게시 직전 head SHA 확인, 인라인 코멘트는 단일 GitHub review로 제출.
-- **실행 제어**: AI 리뷰는 10분 timeout과 사용자 취소를 지원.
-- **대규모 큐**: 최대 1,000개 검색과 최대 6개 head SHA 병렬 조회.
-- **미리보기 후 게시**: 인라인 코멘트 / 요약 코멘트 / Approve / 코멘트+Approve — 모두 확인 시트를 거친다.
-- **다국어**: 앱 UI 언어 + 리뷰 출력 언어를 각각 선택 (기본 = 시스템 로케일).
-- **스케줄 & 알림**: 매일 지정 시각 또는 N시간 간격 수집 + 시스템 알림.
-- **피드백 → 이슈**: 의견을 AI로 정돈 후 GitHub 이슈로 등록 (피드백 레포 미설정 시 커맨드 미리보기만).
-
-## 설정
-
-- **언어**: 앱 언어 / 리뷰 언어 (system·한국어·English).
-- **GitHub**: Owner/org (기본 `fastlane-dev`), Repos (비우면 org 전체).
-- **AI tool**: `claude` / `codex`.
-- **Schedule**: 매일 지정 시각 또는 N시간 간격.
-- **Notifications / Auto-review**: 알림 on/off, PR 발견 시 자동 코드리뷰 on/off.
-- **History**: 로컬 저장 on/off, 보존 기간, 전체 삭제.
-- **Codex pricing / Review budget**: 백만 토큰당 단가와 최근 N일 토큰 한도.
-- **Prompt template**: AI에게 보내는 리뷰 지시문. `{{TITLE}}`, `{{BODY}}`, `{{DIFF}}`, `{{SKILL}}` 치환.
-- **Review skill / guidelines**: 프롬프트 `{{SKILL}}`에 주입되는 추가 규칙 (파일에서 불러오기 가능).
-- **Feedback repository**: 의견을 이슈로 등록할 `owner/repo` (비우면 등록 보류·미리보기만).
-
-## 구조
-
-```
+```text
 Sources/
-  PRRCore/            # 로직 (모델·서비스·뷰모델·뷰) — 테스트 대상
-    Models/           # PullRequest, Analysis(+AIUsage), AppSettings, ReviewRecord
-    Services/         # GitHubService, AIService, FeedbackService, HistoryStore,
-                      #   DependencyDoctor, Scheduler, SettingsStore
-    ViewModels/       # AppState (오케스트레이션)
-    Views/            # MenuContentView, PRCardView, PRDetailView, DiffView,
-                      #   SettingsView, HistoryView, FeedbackView, Components
-    Support/          # ProcessRunner, ToolLocator, Localization, DiffParser, Notifier
-  PRReviewReminder/   # @main App 진입 (창 씬 + --doctor 진단 모드)
-Tests/PRRCoreTests/   # 단위/오케스트레이션 테스트 + gh 출력 픽스처
-Scripts/build-app.sh  # .app 번들 조립 (LSUIElement 메뉴바 앱)
-docs/SPEC.md          # 계약(수용 기준·검증)
-tasks/plan.md         # 실행 계획
+  PRRCore/
+    Models/          데이터 모델
+    Services/        GitHub, AI, 히스토리, 설정, 스케줄
+    ViewModels/      AppState 오케스트레이션
+    Views/           메뉴, 상세, diff, 히스토리, 설정
+    Support/         프로세스 실행, CLI 탐지, 로컬라이징
+  PRReviewReminder/  @main 앱 진입점과 --doctor
+Tests/               단위·오케스트레이션·스크립트 테스트
+Scripts/             앱 패키징, launcher, Formula renderer
 ```
-
-## 설계 원칙
-
-1. **AI는 절대 자동 게시하지 않는다** — 모든 게시는 미리보기 후 사용자 액션.
-2. **읽기/쓰기 분리** — 수집·요약은 자동, 게시는 수동 트리거.
-3. **앱은 토큰을 만지지 않는다** — 인증은 전적으로 `gh`/`claude`/`codex` CLI에 위임.
-4. **없는 명령을 지어내지 않는다** — CLI 부재 시 진단 후 안내.
-5. **불필요한 토큰 소비 금지** — 같은 커밋의 리뷰는 히스토리에서 복원.
-
-## 로컬 데이터와 안전
-
-히스토리를 켜면 PR 본문, diff, AI 결과와 사용량이
-`Application Support/PRReviewReminder/history.json`에 사용자 전용 권한으로 저장된다.
-설정에서 저장을 끄거나 보존 기간을 정할 수 있고 히스토리 창에서 전체 삭제할 수 있다.
-저장을 끄면 캐시 복원과 히스토리 기반 예산 계산도 중단된다.
-
-모든 GitHub 쓰기는 명시적인 사용자 버튼으로만 실행된다. 앱이 게시 직전 head SHA를
-다시 확인하더라도 AI 결과와 라인 위치는 미리보기에서 검증해야 한다.
 
 ## 알려진 제약
 
-- **리뷰 토큰 제한**은 CLI의 실제 세션 잔여량이 아니라 로컬 히스토리 기반 근사다.
-- GitHub Search API 특성상 한 검색 쿼리에서 최대 1,000개 결과를 조회한다.
-- Codex 비용은 CLI가 보고한 실제 청구액이 아니라 설정 단가 기반 추정이다.
-- CLI 실행은 GUI 앱의 최소 PATH 문제를 우회하기 위해 로그인 셸 + 알려진 설치 경로 폴백으로 탐지한다.
-- 스케줄은 앱이 실행 중일 때만 동작한다(백그라운드 데몬/launchd는 범위 밖).
+- 스케줄은 앱이 실행 중일 때만 동작하며 별도 background daemon은 없습니다.
+- 한 GitHub Search 쿼리는 API 제한에 따라 최대 1,000건을 조회합니다.
+- Codex 비용은 실제 청구액이 아니라 설정한 모델 단가와 보고 토큰을 이용한 추정입니다.
+- 로컬 토큰 예산은 CLI 계정의 실제 잔여량이 아니라 저장된 히스토리 기반 근사입니다.
+- Developer ID가 없어 GitHub Release ZIP은 ad-hoc 서명됩니다. 일반 설치에는 로컬에서
+  빌드하는 Homebrew Formula를 권장합니다.
 
-제품 흐름과 아키텍처는 [한 페이지 소개](docs/PROJECT_OVERVIEW.md)와
-[현재 제품 명세](docs/SPEC.md)에서 볼 수 있다.
+## 문서
 
-태그 기반 ad-hoc 또는 선택적 서명·공증 릴리스 절차는
-[릴리스 가이드](docs/RELEASING.md)를 참고한다.
-실제 앱 스크린샷/GIF는 macOS GUI에서 검증한 캡처를 확보한 뒤 추가한다.
+- [제품 소개와 흐름](docs/PROJECT_OVERVIEW.md)
+- [현재 제품 명세](docs/SPEC.md)
+- [Homebrew 배포 가이드](docs/HOMEBREW.md)
+- [릴리스 가이드](docs/RELEASING.md)
+- [실행 계획](tasks/plan.md)
+- [변경 기록](CHANGELOG.md)
 
-## 개발 규율
-
-이 저장소는 [Beez Agent Harness](https://github.com/90ms/beez-agent-harness)의
-Spec → Plan → Implement → Verify → Review 규율을 따른다. `.harness/`와 `AGENTS.md` 참고.
-```bash
-node /path/to/beez-agent-harness/bin/beez-harness.js doctor   # 어댑터 상태 점검
-```
+이 프로젝트는 MIT License로 배포됩니다.
