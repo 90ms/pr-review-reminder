@@ -22,25 +22,21 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertFalse(try GitHubService.hasReviewed(Fixtures.data("reviews-not-reviewed"), login: "kms-yeoshin"))
     }
 
-    // AC2 — end-to-end fetch filters out already-reviewed PRs using the mock runner.
-    func testFetchAwaitingReviewFiltersReviewed() async throws {
+    // A renewed review request must remain visible even if the user reviewed an
+    // earlier commit. GitHub's review-requested search result is authoritative.
+    func testFetchAwaitingReviewKeepsRenewedRequestsWithoutNPlusOneCalls() async throws {
         let mock = MockProcessRunner()
         mock.responder = { command in
             let args = command.arguments
             if args.first == "search" {
                 return CommandResult(exitCode: 0, stdout: Fixtures.string("search-prs"), stderr: "")
             }
-            // reviews endpoint: PR 42 already reviewed, PR 7 not.
-            if let api = args.first(where: { $0.contains("/pulls/") }) {
-                let json = api.contains("/42/") ? Fixtures.string("reviews-reviewed")
-                                                : Fixtures.string("reviews-not-reviewed")
-                return CommandResult(exitCode: 0, stdout: json, stderr: "")
-            }
-            return CommandResult(exitCode: 0, stdout: "[]", stderr: "")
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected command")
         }
         let service = GitHubService(runner: mock, ghPath: "/usr/bin/gh")
         let awaiting = try await service.fetchAwaitingReview(settings: AppSettings(), login: "kms-yeoshin")
-        XCTAssertEqual(awaiting.map(\.number), [7])
+        XCTAssertEqual(awaiting.map(\.number), [42, 7])
+        XCTAssertEqual(mock.commands.count, 1)
     }
 
     // AC7 — publishing commands are constructed correctly (no real posting).

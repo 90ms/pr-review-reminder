@@ -154,24 +154,16 @@ public final class GitHubService: Sendable {
         return login
     }
 
-    /// Fetch open PRs where the user is a requested reviewer and has NOT yet reviewed.
+    /// Fetch open PRs where GitHub currently considers the user a requested
+    /// reviewer. Do not filter this list using historical reviews: GitHub may
+    /// request another review after new commits, and an older review must not
+    /// hide that renewed request.
     public func fetchAwaitingReview(settings: AppSettings, login: String) async throws -> [PullRequest] {
         let search = try await runner.run(Self.searchPRsCommand(gh: gh, owner: settings.owner, repositories: settings.repositories))
         guard search.succeeded else {
             throw GitHubError("gh search failed: \(search.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
-        let candidates = try Self.parsePullRequests(Data(search.stdout.utf8))
-
-        var awaiting: [PullRequest] = []
-        for pr in candidates {
-            let reviews = try await runner.run(Self.reviewsCommand(gh: gh, repository: pr.repository, number: pr.number))
-            // If we cannot read reviews, keep the PR (fail open) so nothing is missed.
-            let reviewed = reviews.succeeded
-                ? ((try? Self.hasReviewed(Data(reviews.stdout.utf8), login: login)) ?? false)
-                : false
-            if !reviewed { awaiting.append(pr) }
-        }
-        return awaiting
+        return try Self.parsePullRequests(Data(search.stdout.utf8))
     }
 
     /// Fetches only the head commit SHA (cheap, no AI cost) for cache lookups.
