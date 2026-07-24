@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pull request details provide focused Review, Changes, and Side-by-side layouts.
+
+### Fixed
+
+- Diff loading failures now show the error and a retry action instead of an
+  indefinite progress indicator, with empty diffs handled separately.
+
 ## [0.2.2] - 2026-07-24
 
 ### Added
