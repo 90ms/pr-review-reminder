@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.0
 import PackageDescription
 
 let package = Package(
@@ -8,16 +8,19 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "PRRCore"
+            name: "PRRCore",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
             name: "PRReviewReminder",
-            dependencies: ["PRRCore"]
+            dependencies: ["PRRCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "PRRCoreTests",
             dependencies: ["PRRCore"],
-            resources: [.copy("Fixtures")]
+            resources: [.copy("Fixtures")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         )
     ]
 )
