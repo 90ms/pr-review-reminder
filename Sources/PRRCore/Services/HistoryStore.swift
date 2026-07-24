@@ -2,8 +2,15 @@ import Foundation
 
 /// Persistence abstraction so history is testable without touching the disk.
 public protocol HistoryPersisting: Sendable {
-    func read() -> Data?
-    func write(_ data: Data)
+    var location: String { get }
+    func read() throws -> Data?
+    func write(_ data: Data) throws
+    func backupCorruptData(_ data: Data) throws -> String?
+}
+
+public extension HistoryPersisting {
+    var location: String { "In-memory history" }
+    func backupCorruptData(_ data: Data) throws -> String? { nil }
 }
 
 /// Stores history as JSON in Application Support/PRReviewReminder/history.json.
@@ -18,17 +25,32 @@ public struct FileHistoryPersistence: HistoryPersisting {
         self.url = dir.appendingPathComponent("history.json")
     }
 
-    public func read() -> Data? { try? Data(contentsOf: url) }
-    public func write(_ data: Data) {
+    public var location: String { url.path }
+
+    public func read() throws -> Data? {
         do {
-            try data.write(to: url, options: .atomic)
-            try FileManager.default.setAttributes(
-                [.posixPermissions: NSNumber(value: Int16(0o600))],
-                ofItemAtPath: url.path
-            )
-        } catch {
-            // Persistence remains best-effort; callers keep the in-memory copy.
+            return try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return nil
         }
+    }
+
+    public func write(_ data: Data) throws {
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o600))],
+            ofItemAtPath: url.path
+        )
+    }
+
+    public func backupCorruptData(_ data: Data) throws -> String? {
+        let formatter = ISO8601DateFormatter()
+        let stamp = formatter.string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let backup = url.deletingPathExtension()
+            .appendingPathExtension("corrupt-\(stamp).json")
+        try data.write(to: backup, options: .atomic)
+        return backup.path
     }
 }
 
@@ -36,14 +58,42 @@ public struct FileHistoryPersistence: HistoryPersisting {
 public final class HistoryStore: @unchecked Sendable {
     private let persistence: HistoryPersisting
     private var records: [ReviewRecord]
+    public private(set) var diagnostic: StorageDiagnostic
 
     public init(persistence: HistoryPersisting = FileHistoryPersistence()) {
         self.persistence = persistence
-        if let data = persistence.read(),
-           let decoded = try? Self.decoder.decode([ReviewRecord].self, from: data) {
-            self.records = decoded
-        } else {
+        self.diagnostic = StorageDiagnostic(
+            health: .empty,
+            location: persistence.location
+        )
+        do {
+            guard let data = try persistence.read() else {
+                self.records = []
+                return
+            }
+            do {
+                self.records = try Self.decoder.decode([ReviewRecord].self, from: data)
+                self.diagnostic = StorageDiagnostic(
+                    health: .healthy,
+                    location: persistence.location,
+                    byteCount: data.count
+                )
+            } catch {
+                let backup = try? persistence.backupCorruptData(data)
+                self.records = []
+                self.diagnostic = StorageDiagnostic(
+                    health: .decodeFailed(error.localizedDescription),
+                    location: persistence.location,
+                    byteCount: data.count,
+                    backupLocation: backup
+                )
+            }
+        } catch {
             self.records = []
+            self.diagnostic = StorageDiagnostic(
+                health: .readFailed(error.localizedDescription),
+                location: persistence.location
+            )
         }
     }
 
@@ -120,8 +170,23 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     private func persist() {
-        if let data = try? Self.encoder.encode(records) {
-            persistence.write(data)
+        do {
+            let data = try Self.encoder.encode(records)
+            try persistence.write(data)
+            diagnostic = StorageDiagnostic(
+                health: .healthy,
+                location: persistence.location,
+                byteCount: data.count,
+                lastSavedAt: Date()
+            )
+        } catch {
+            diagnostic = StorageDiagnostic(
+                health: .writeFailed(error.localizedDescription),
+                location: persistence.location,
+                byteCount: diagnostic.byteCount,
+                lastSavedAt: diagnostic.lastSavedAt,
+                backupLocation: diagnostic.backupLocation
+            )
         }
     }
 }

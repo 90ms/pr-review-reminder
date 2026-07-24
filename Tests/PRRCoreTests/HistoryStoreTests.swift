@@ -4,8 +4,8 @@ import XCTest
 final class HistoryStoreTests: XCTestCase {
     final class MemPersistence: HistoryPersisting, @unchecked Sendable {
         var data: Data?
-        func read() -> Data? { data }
-        func write(_ d: Data) { data = d }
+        func read() throws -> Data? { data }
+        func write(_ d: Data) throws { data = d }
     }
 
     private func record(_ repo: String, _ num: Int, _ sha: String, tokens: Int, cost: Double, at: TimeInterval) -> ReviewRecord {
@@ -80,5 +80,44 @@ final class HistoryStoreTests: XCTestCase {
 
         store.deleteAll()
         XCTAssertTrue(store.all().isEmpty)
+    }
+
+    func testCorruptHistoryIsReportedAndBackedUp() {
+        final class CorruptPersistence: HistoryPersisting, @unchecked Sendable {
+            let data = Data("{not-json".utf8)
+            var backedUp = false
+            func read() throws -> Data? { data }
+            func write(_ data: Data) throws {}
+            func backupCorruptData(_ data: Data) throws -> String? {
+                backedUp = true
+                return "/tmp/history.corrupt.json"
+            }
+        }
+        let persistence = CorruptPersistence()
+
+        let store = HistoryStore(persistence: persistence)
+
+        guard case .decodeFailed = store.diagnostic.health else {
+            return XCTFail("Expected a decode failure diagnostic")
+        }
+        XCTAssertTrue(persistence.backedUp)
+        XCTAssertEqual(store.diagnostic.backupLocation, "/tmp/history.corrupt.json")
+        XCTAssertTrue(store.all().isEmpty)
+    }
+
+    func testWriteFailureKeepsInMemoryHistoryAndReportsDiagnostic() {
+        struct WriteFailure: Error {}
+        final class FailingPersistence: HistoryPersisting, @unchecked Sendable {
+            func read() throws -> Data? { nil }
+            func write(_ data: Data) throws { throw WriteFailure() }
+        }
+        let store = HistoryStore(persistence: FailingPersistence())
+
+        store.upsert(record("o/r", 1, "sha", tokens: 1, cost: 0, at: 1))
+
+        XCTAssertEqual(store.all().count, 1)
+        guard case .writeFailed = store.diagnostic.health else {
+            return XCTFail("Expected a write failure diagnostic")
+        }
     }
 }

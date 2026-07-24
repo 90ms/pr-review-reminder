@@ -11,8 +11,8 @@ private final class AppStateMemoryKeyValueStore: KeyValueStore {
 
 private final class AppStateMemoryHistoryPersistence: HistoryPersisting, @unchecked Sendable {
     var data: Data?
-    func read() -> Data? { data }
-    func write(_ data: Data) { self.data = data }
+    func read() throws -> Data? { data }
+    func write(_ data: Data) throws { self.data = data }
 }
 
 private final class DetailAttemptCounter: @unchecked Sendable {

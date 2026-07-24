@@ -13,6 +13,10 @@ extension UserDefaults: KeyValueStore {}
 public final class SettingsStore: @unchecked Sendable {
     private let store: KeyValueStore
     private let key: String
+    public private(set) var diagnostic = StorageDiagnostic(
+        health: .empty,
+        location: "UserDefaults: app.settings"
+    )
 
     public init(store: KeyValueStore = UserDefaults.standard, key: String = "app.settings") {
         self.store = store
@@ -20,15 +24,48 @@ public final class SettingsStore: @unchecked Sendable {
     }
 
     public func load() -> AppSettings {
-        guard let data = store.data(forKey: key),
-              let settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
+        guard let data = store.data(forKey: key) else {
+            diagnostic = StorageDiagnostic(
+                health: .empty,
+                location: "UserDefaults: \(key)"
+            )
             return AppSettings()
         }
-        return settings
+        do {
+            let settings = try JSONDecoder().decode(AppSettings.self, from: data)
+            diagnostic = StorageDiagnostic(
+                health: .healthy,
+                location: "UserDefaults: \(key)",
+                byteCount: data.count
+            )
+            return settings
+        } catch {
+            diagnostic = StorageDiagnostic(
+                health: .decodeFailed(error.localizedDescription),
+                location: "UserDefaults: \(key)",
+                byteCount: data.count
+            )
+            return AppSettings()
+        }
     }
 
     public func save(_ settings: AppSettings) {
-        guard let data = try? JSONEncoder().encode(settings) else { return }
-        store.set(data, forKey: key)
+        do {
+            let data = try JSONEncoder().encode(settings)
+            store.set(data, forKey: key)
+            diagnostic = StorageDiagnostic(
+                health: .healthy,
+                location: "UserDefaults: \(key)",
+                byteCount: data.count,
+                lastSavedAt: Date()
+            )
+        } catch {
+            diagnostic = StorageDiagnostic(
+                health: .writeFailed(error.localizedDescription),
+                location: "UserDefaults: \(key)",
+                byteCount: diagnostic.byteCount,
+                lastSavedAt: diagnostic.lastSavedAt
+            )
+        }
     }
 }

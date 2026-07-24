@@ -56,4 +56,21 @@ final class SchedulerAndSettingsTests: XCTestCase {
         XCTAssertEqual(loaded.aiTool, .codex)
         XCTAssertEqual(loaded.intervalHours, 12)
     }
+
+    func testCorruptSettingsAreReportedBeforeFallingBackToDefaults() {
+        final class MemStore: KeyValueStore {
+            var data = Data("{bad-json".utf8)
+            func data(forKey key: String) -> Data? { data }
+            func set(_ value: Any?, forKey key: String) { data = value as? Data ?? data }
+        }
+        let store = SettingsStore(store: MemStore(), key: "corrupt")
+
+        let settings = store.load()
+
+        XCTAssertEqual(settings, AppSettings())
+        guard case .decodeFailed = store.diagnostic.health else {
+            return XCTFail("Expected a decode failure diagnostic")
+        }
+        XCTAssertGreaterThan(store.diagnostic.byteCount, 0)
+    }
 }
