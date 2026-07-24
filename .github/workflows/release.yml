@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish macOS release
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must use v<semver>, got: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Validate signing credentials
+        shell: bash
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${CERTIFICATE_P12_BASE64:?CERTIFICATE_P12_BASE64 is required}"
+          : "${CERTIFICATE_PASSWORD:?CERTIFICATE_PASSWORD is required}"
+          : "${KEYCHAIN_PASSWORD:?KEYCHAIN_PASSWORD is required}"
+          : "${DEVELOPER_ID_APPLICATION:?DEVELOPER_ID_APPLICATION is required}"
+          : "${APPLE_ID:?APPLE_ID is required}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+          : "${APPLE_APP_PASSWORD:?APPLE_APP_PASSWORD is required}"
+
+      - name: Import Developer ID certificate
+        shell: bash
+        env:
+          CERTIFICATE_P12_BASE64: ${{ secrets.CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          printf '%s' "$CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$keychain"
+
+      - name: Build application
+        env:
+          APP_VERSION: ${{ steps.version.outputs.value }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          CODE_SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+        run: ./Scripts/build-app.sh
+
+      - name: Create notarization archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent \
+            "dist/PR Review Reminder.app" \
+            "dist/PR-Review-Reminder.zip"
+
+      - name: Notarize and staple
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_ID:?APPLE_ID is required for notarization}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required for notarization}"
+          : "${APPLE_APP_PASSWORD:?APPLE_APP_PASSWORD is required for notarization}"
+          xcrun notarytool submit "dist/PR-Review-Reminder.zip" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "dist/PR Review Reminder.app"
+          rm "dist/PR-Review-Reminder.zip"
+          ditto -c -k --keepParent \
+            "dist/PR Review Reminder.app" \
+            "dist/PR-Review-Reminder.zip"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/PR-Review-Reminder.zip" \
+            --generate-notes \
+            --verify-tag

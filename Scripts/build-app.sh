@@ -75,8 +75,15 @@ PLIST
 
 cat > "$APP_DIR/Contents/PkgInfo" <<< "APPL????"
 
-echo "==> Ad-hoc code signing (required for notifications & Keychain-backed gh)"
-codesign --force --deep --sign - "$APP_DIR" 2>/dev/null || echo "   (codesign skipped)"
+if [[ -n "${CODE_SIGN_IDENTITY:-}" ]]; then
+    echo "==> Signing with Developer ID"
+    codesign --force --deep --options runtime --timestamp \
+        --sign "$CODE_SIGN_IDENTITY" "$APP_DIR"
+    codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+else
+    echo "==> Ad-hoc code signing (local build)"
+    codesign --force --deep --sign - "$APP_DIR" 2>/dev/null || echo "   (codesign skipped)"
+fi
 
 echo "==> Done: $APP_DIR"
 echo "    Run: open \"$APP_DIR\""
