@@ -13,11 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Register tap
+        run: brew tap 90ms/tap
+
       - name: Install Formula from source
-        run: brew install --build-from-source ./Formula/pr-review-reminder.rb
+        run: brew install --build-from-source 90ms/tap/pr-review-reminder
 
       - name: Test Formula
-        run: brew test pr-review-reminder
+        run: brew test 90ms/tap/pr-review-reminder
 
       - name: Audit Formula
-        run: brew audit --strict pr-review-reminder
+        run: brew audit --strict 90ms/tap/pr-review-reminder
