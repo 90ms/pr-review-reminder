@@ -51,8 +51,21 @@ public final class SessionHealthStore: @unchecked Sendable {
     public func beginSession(
         pid: Int32 = ProcessInfo.processInfo.processIdentifier,
         appVersion: String,
+        now: Date = Date()
+    ) -> UnexpectedTerminationReport? {
+        beginSession(
+            pid: pid,
+            appVersion: appVersion,
+            now: now,
+            isProcessRunning: SessionHealthStore.isProcessRunning
+        )
+    }
+
+    public func beginSession(
+        pid: Int32,
+        appVersion: String,
         now: Date = Date(),
-        isProcessRunning: (Int32) -> Bool = SessionHealthStore.isProcessRunning
+        isProcessRunning: (Int32) -> Bool
     ) -> UnexpectedTerminationReport? {
         let previous = load()
         save(Session(pid: pid, startedAt: now, appVersion: appVersion))
