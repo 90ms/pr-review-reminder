@@ -86,12 +86,15 @@ Split/Unified diff를 확인한다. 게시 시 미리보기 시트를 거치며 
 
 ### 4.2 GitHub 연동
 
-- 수집: owner 전체 또는 선택 저장소의 리뷰 요청 PR을 최대 100개 조회한다.
+- 수집: `gh search` 내부 pagination으로 owner 전체 또는 선택 저장소의 리뷰 요청 PR을
+  GitHub Search 상한인 최대 1,000개까지 조회한다.
+- 캐시 확인용 head SHA는 최대 6개 동시 조회로 제한한다.
 - 상세: 본문, head SHA, additions/deletions, 전체 diff를 조회한다.
 - 게시: 인라인 코멘트와 선택적 승인은 하나의 GitHub review API 요청으로 묶고,
   요약과 단독 승인은 `gh pr` 명령을 사용한다.
 - 게시 직전 현재 head SHA가 분석 시점과 같은지 검증하고, 다르면 재리뷰 전까지 차단한다.
-- 오류: 명령 실패는 호출자에게 전달하며, 수집 실패 시 기존 화면 상태를 유지한다.
+- 오류: 읽기 명령은 250ms/500ms 간격으로 제한 재시도한 뒤 호출자에게 전달한다.
+  diff 조회 실패는 빈 결과로 숨기지 않으며, 수집 실패 시 기존 화면 상태를 유지한다.
 - 인증: 앱 자체 로그인 UI나 토큰 저장소를 제공하지 않는다.
 
 ### 4.3 AI 분석
@@ -99,7 +102,8 @@ Split/Unified diff를 확인한다. 게시 시 미리보기 시트를 거치며 
 선택한 CLI에 프롬프트를 stdin으로 전달한다. Codex는 임의 작업 디렉터리에서도
 읽기 전용 sandbox로 실행한다. Claude의 구조화된 실행 결과에서는 토큰과 보고된
 비용을, Codex stderr에서는 총 토큰을 읽고 설정 단가로 비용을 추정한다. AI 명령은
-기본 10분 timeout을 가지며 task cancellation도 외부 프로세스에 전달된다.
+기본 10분 timeout을 가지며 사용자 취소와 task cancellation도 외부 프로세스에 전달된다.
+60,000자를 넘는 diff는 AI 입력이 잘린다는 경고를 상세 화면에 표시한다.
 
 기대 출력은 다음 JSON 객체다.
 
@@ -184,6 +188,9 @@ flowchart LR
 | AC14 | AI CLI가 timeout 또는 task 취소 시 종료된다. |
 | AC15 | 히스토리 저장 여부와 보존 기간을 적용하고 전체 삭제할 수 있다. |
 | AC16 | Codex 비용을 설정 단가로 추정하고 로컬 토큰 예산 초과 시 분석을 차단한다. |
+| AC17 | 사용자가 진행 중 리뷰를 취소하면 CLI가 종료되고 취소 상태를 표시한다. |
+| AC18 | GitHub 읽기 실패를 제한 재시도하고 diff 실패를 빈 결과로 숨기지 않는다. |
+| AC19 | Swift 6 language mode에서 build/test/app bundle 검증이 통과한다. |
 
 ## 7. 검증
 
@@ -199,12 +206,11 @@ swift test
 
 ## 8. 현재 제약과 위험
 
-- AI 명령은 timeout과 task 취소를 지원하지만 사용자가 누르는 별도 취소 UI는 없다.
 - 히스토리는 사용자가 제어할 수 있지만, 활성화하면 PR 본문과 전체 diff를 로컬 JSON에 저장한다.
-- 검색은 최대 100개이고 대규모 조직을 위한 페이지 처리나 조회 최적화가 없다.
-- diff 조회 실패는 빈 diff로 처리되고, AI 입력에서 diff가 잘렸다는 사실은 UI에 표시되지 않는다.
+- GitHub Search API는 한 쿼리에서 최대 1,000개 결과만 제공한다.
 - Codex 비용은 CLI가 보고한 실제 비용이 아니라 사용자가 입력한 단가 기반 추정이다.
 - 스케줄은 앱이 실행 중일 때만 동작한다.
-- Foundation 프로세스 처리와 저장소의 Swift 6 strict concurrency 적합성은 추가 검증이 필요하다.
+- VoiceOver와 키보드 탐색은 실제 macOS GUI에서 추가 수동 감사가 필요하다.
+- 정식 릴리스에는 저장소 관리자가 Developer ID와 Apple 공증 secret을 설정해야 한다.
 
 이 제약의 해결 순서와 커밋 단위는 [`tasks/plan.md`](../tasks/plan.md)에 정의한다.

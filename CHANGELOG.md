@@ -14,12 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable Codex cost estimates and a rolling local review-token budget.
 - Bundled application icon and localized diff/usage labels.
 - Process timeouts and cancellation support for external commands.
+- User-facing review cancellation with distinct cancelled and timed-out states.
+- Bounded GitHub read retries and visible AI diff truncation warnings.
+- Search pagination up to 1,000 results and bounded concurrent cache lookups.
+- Tag-driven Developer ID signing, notarization, and GitHub Release workflow.
 
 ### Changed
 
 - Long diff lines use horizontal scrolling.
 - Inline comments and optional approval are submitted as one GitHub review.
 - Window titles react to the selected application language.
+- CI and all targets now use Swift 6 language mode on macOS 15.
+- The menu shows the next scheduled run and adds VoiceOver labels to icon controls.
 
 ### Fixed
 
