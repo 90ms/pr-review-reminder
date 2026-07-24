@@ -1,5 +1,9 @@
 # 릴리스 가이드
 
+Codex에서는 저장소에 포함된 `$release-pr-review-reminder` 스킬로 이 절차를 실행할 수
+있다. 스킬은 준비 커밋과 CI 검증을 자동화하지만 태그 생성 전에는 정확한 버전·SHA를
+확인하며, Homebrew tap 병합도 승인 범위 밖에서 임의로 수행하지 않는다.
+
 릴리스는 `v<semver>` 태그 push로 시작한다. Developer ID secret이 모두 설정되어
 있으면 서명·공증·stapling을 수행하고, 하나도 없으면 ad-hoc 서명 ZIP과 SHA-256을
 공개한다. 일부 secret만 설정된 상태는 구성 오류로 실패한다.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release PR Review Reminder"
+  short_description: "Safely publish the app and Homebrew Formula"
+  default_prompt: "Use $release-pr-review-reminder to prepare and publish the next verified release."
