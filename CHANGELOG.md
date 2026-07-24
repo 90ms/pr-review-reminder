@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- User feedback now always targets the `90ms/pr-review-reminder` issue tracker.
+
+### Fixed
+
+- The settings button now opens a dedicated SwiftUI window in packaged Homebrew
+  builds instead of relying on an AppKit responder selector.
+
 ## [0.2.1] - 2026-07-24
 
 ### Fixed
