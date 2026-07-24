@@ -113,10 +113,6 @@ public struct SettingsView: View {
                 }
             }
 
-            Section(app.l("sec_feedback")) {
-                TextField(app.l("feedback_repo"), text: $app.settings.feedbackRepository)
-            }
-
             Section(app.l("sec_deps")) {
                 dependencyRows
                 Button(app.l("recheck")) { Task { await app.diagnose() } }

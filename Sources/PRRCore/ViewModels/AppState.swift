@@ -406,13 +406,12 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// Build the issue command / submit. While no feedback repo is set, returns a
-    /// `.held` preview and executes nothing.
+    /// Submit feedback to this project's GitHub issue tracker.
     public func submitFeedback(title: String, body: String) async -> FeedbackService.SubmitResult? {
         let github = ghPath.map { GitHubService(runner: runner, ghPath: $0) }
         let feedback = FeedbackService(github: github, ai: makeAIService())
         do {
-            return try await feedback.submit(title: title, body: body, settings: settings, ghPath: ghPath)
+            return try await feedback.submit(title: title, body: body, ghPath: ghPath)
         } catch {
             lastError = "\(error)"
             return nil

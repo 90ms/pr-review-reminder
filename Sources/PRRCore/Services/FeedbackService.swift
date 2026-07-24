@@ -1,9 +1,10 @@
 import Foundation
 
-/// Constructs (and, only on explicit user action, would run) a GitHub issue for
-/// user feedback, and can tidy the draft via the AI CLI. While no feedback repo
-/// is configured, `submit` only returns a command preview — nothing is executed.
+/// Constructs and, only on explicit user action, creates a GitHub issue in this
+/// project's repository. It can also tidy the draft via the AI CLI.
 public struct FeedbackService: Sendable {
+    public static let repository = "90ms/pr-review-reminder"
+
     private let github: GitHubService?
     private let ai: AIService
 
@@ -68,21 +69,29 @@ public struct FeedbackService: Sendable {
     // MARK: - Submit (guarded)
 
     public enum SubmitResult: Sendable, Equatable {
-        /// No feedback repo set → registration held; carries the command preview.
+        /// GitHub CLI is unavailable, so nothing was executed.
         case held(preview: String)
         /// Issue created; carries stdout (e.g. the issue URL).
         case created(output: String)
     }
 
-    /// Submits the feedback as a GitHub issue. If no repository is configured,
-    /// returns `.held` with a command preview and does NOT execute anything.
-    public func submit(title: String, body: String, settings: AppSettings, ghPath: String?) async throws -> SubmitResult {
-        let repo = settings.feedbackRepository.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Submits feedback to the project repository. Without an available GitHub
+    /// service, returns `.held` with a preview and does not execute anything.
+    public func submit(title: String, body: String, ghPath: String?) async throws -> SubmitResult {
         let gh = ghPath ?? "gh"
-        guard !repo.isEmpty, let github else {
-            return .held(preview: Self.previewString(gh: gh, repository: repo.isEmpty ? "<owner/repo>" : repo, title: title, body: body))
+        guard let github else {
+            return .held(preview: Self.previewString(
+                gh: gh,
+                repository: Self.repository,
+                title: title,
+                body: body
+            ))
         }
-        let result = try await github.createIssue(repository: repo, title: title, body: body)
+        let result = try await github.createIssue(
+            repository: Self.repository,
+            title: title,
+            body: body
+        )
         return .created(output: result.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }

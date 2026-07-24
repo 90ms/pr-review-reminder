@@ -83,18 +83,42 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         XCTAssertEqual(settings.appLanguage, .system)    // new key defaulted
         XCTAssertEqual(settings.reviewLanguage, .system) // new key defaulted
         XCTAssertEqual(settings.reviewSkill, "")         // new key defaulted
-        XCTAssertEqual(settings.feedbackRepository, "")  // new key defaulted
     }
 
-    // Held submission builds a preview and executes nothing.
-    func testSubmitHeldWhenNoRepo() async {
+    // Without gh, submission builds a project-repository preview and executes nothing.
+    func testSubmitHeldWhenGitHubUnavailable() async {
         let mock = MockProcessRunner()
         let ai = AIService(runner: mock, claudePath: "/bin/claude", codexPath: nil)
         let feedback = FeedbackService(github: nil, ai: ai)
-        var settings = AppSettings(); settings.feedbackRepository = ""
-        let result = try? await feedback.submit(title: "Hi", body: "there", settings: settings, ghPath: "/usr/bin/gh")
+        let result = try? await feedback.submit(title: "Hi", body: "there", ghPath: "/usr/bin/gh")
         guard case .held(let preview) = result else { return XCTFail("expected held") }
-        XCTAssertTrue(preview.contains("<owner/repo>"))
+        XCTAssertTrue(preview.contains("90ms/pr-review-reminder"))
         XCTAssertTrue(mock.commands.isEmpty, "nothing should be executed when held")
+    }
+
+    func testSubmitCreatesIssueInProjectRepository() async {
+        let mock = MockProcessRunner()
+        mock.defaultResult = CommandResult(
+            exitCode: 0,
+            stdout: "https://github.com/90ms/pr-review-reminder/issues/123\n",
+            stderr: ""
+        )
+        let github = GitHubService(runner: mock, ghPath: "/usr/bin/gh")
+        let ai = AIService(runner: mock, claudePath: "/bin/claude", codexPath: nil)
+        let feedback = FeedbackService(github: github, ai: ai)
+
+        let result = try? await feedback.submit(title: "Bug", body: "It broke", ghPath: "/usr/bin/gh")
+
+        XCTAssertEqual(
+            result,
+            .created(output: "https://github.com/90ms/pr-review-reminder/issues/123")
+        )
+        XCTAssertEqual(
+            mock.commands.last?.arguments,
+            [
+                "issue", "create", "-R", "90ms/pr-review-reminder",
+                "--title", "Bug", "--body", "It broke",
+            ]
+        )
     }
 }

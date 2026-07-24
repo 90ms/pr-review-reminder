@@ -148,8 +148,6 @@ public struct L10n: Sendable {
         "gh_authed": "gh authenticated",
         "claude_cli": "claude CLI",
         "codex_cli": "codex CLI",
-        "sec_feedback": "Feedback",
-        "feedback_repo": "Feedback repository (owner/repo)",
         "save": "Save",
         "not_checked": "Not checked yet.",
         // feedback window
@@ -159,7 +157,7 @@ public struct L10n: Sendable {
         "fb_submit": "Submit as issue",
         "fb_cancel": "Cancel",
         "fb_preview": "Command preview (not executed)",
-        "fb_hold": "Feedback repository is not set — registration is on hold. The command that would run is shown below.",
+        "fb_hold": "GitHub CLI is unavailable, so the issue was not created. The command that would run is shown below.",
         "fb_tidying": "Tidying…",
     ]
 
@@ -271,8 +269,6 @@ public struct L10n: Sendable {
         "gh_authed": "gh 인증됨",
         "claude_cli": "claude CLI",
         "codex_cli": "codex CLI",
-        "sec_feedback": "피드백",
-        "feedback_repo": "피드백 레포 (owner/repo)",
         "save": "저장",
         "not_checked": "아직 확인 안 함.",
         // feedback window
@@ -282,7 +278,7 @@ public struct L10n: Sendable {
         "fb_submit": "이슈로 등록",
         "fb_cancel": "취소",
         "fb_preview": "커맨드 미리보기 (실행 안 됨)",
-        "fb_hold": "피드백 레포가 설정되지 않아 등록을 보류합니다. 실행될 커맨드는 아래와 같습니다.",
+        "fb_hold": "GitHub CLI를 사용할 수 없어 이슈를 만들지 않았습니다. 실행될 커맨드는 아래와 같습니다.",
         "fb_tidying": "정돈 중…",
     ]
 

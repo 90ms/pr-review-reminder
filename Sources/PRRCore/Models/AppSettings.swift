@@ -40,8 +40,6 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var reviewLanguage: AppLanguage
     /// Extra reviewer guidelines / "skill" injected into the prompt via `{{SKILL}}`.
     public var reviewSkill: String
-    /// Repository to file user feedback into as GitHub issues ("owner/repo"). Empty = hold.
-    public var feedbackRepository: String
     /// When true, code review runs automatically for every fetched PR. When false
     /// (default), collection only fetches PRs and review is triggered per-PR by the user.
     public var autoReview: Bool
@@ -73,7 +71,6 @@ public struct AppSettings: Sendable, Codable, Equatable {
         appLanguage: AppLanguage = .system,
         reviewLanguage: AppLanguage = .system,
         reviewSkill: String = "",
-        feedbackRepository: String = "",
         autoReview: Bool = false,
         historyEnabled: Bool = true,
         historyRetentionDays: Int = 0,
@@ -94,7 +91,6 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.appLanguage = appLanguage
         self.reviewLanguage = reviewLanguage
         self.reviewSkill = reviewSkill
-        self.feedbackRepository = feedbackRepository
         self.autoReview = autoReview
         self.historyEnabled = historyEnabled
         self.historyRetentionDays = historyRetentionDays
@@ -121,7 +117,6 @@ public struct AppSettings: Sendable, Codable, Equatable {
         appLanguage = try c.decodeIfPresent(AppLanguage.self, forKey: .appLanguage) ?? d.appLanguage
         reviewLanguage = try c.decodeIfPresent(AppLanguage.self, forKey: .reviewLanguage) ?? d.reviewLanguage
         reviewSkill = try c.decodeIfPresent(String.self, forKey: .reviewSkill) ?? d.reviewSkill
-        feedbackRepository = try c.decodeIfPresent(String.self, forKey: .feedbackRepository) ?? d.feedbackRepository
         autoReview = try c.decodeIfPresent(Bool.self, forKey: .autoReview) ?? d.autoReview
         historyEnabled = try c.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? d.historyEnabled
         historyRetentionDays = try c.decodeIfPresent(Int.self, forKey: .historyRetentionDays) ?? d.historyRetentionDays
