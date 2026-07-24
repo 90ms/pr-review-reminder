@@ -193,6 +193,9 @@ public struct L10n: Sendable {
         "corrupt_backup": "Corrupt data backup:",
         "search_limit_warning": "Search reached GitHub's 1,000-result limit.",
         "github_retried": "GitHub reads retried %d time(s).",
+        "filter_files": "Filter changed files",
+        "previous_change": "Previous change",
+        "next_change": "Next change",
         // feedback window
         "fb_title": "Title",
         "fb_body": "Details",
@@ -357,6 +360,9 @@ public struct L10n: Sendable {
         "corrupt_backup": "손상 데이터 백업:",
         "search_limit_warning": "GitHub 검색 결과가 1,000건 상한에 도달했습니다.",
         "github_retried": "GitHub 조회를 %d회 재시도했습니다.",
+        "filter_files": "변경 파일 검색",
+        "previous_change": "이전 변경",
+        "next_change": "다음 변경",
         // feedback window
         "fb_title": "제목",
         "fb_body": "내용",

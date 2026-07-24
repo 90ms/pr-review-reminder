@@ -1,14 +1,38 @@
 import SwiftUI
 
+struct DiffNavigationTarget: Equatable {
+    let id = UUID()
+    let path: String
+    let line: Int
+    let side: String
+}
+
 struct DiffView: View {
     @EnvironmentObject private var app: AppState
-    let diff: String
+    let target: DiffNavigationTarget?
+    private let rows: [DiffParser.Row]
+    private let files: [DiffParser.FileSection]
     @State private var mode: Mode = .split
+    @State private var fileQuery = ""
+    @State private var changeIndex = -1
 
     enum Mode: String, CaseIterable, Identifiable { case split, unified; var id: String { rawValue } }
 
-    private var rows: [DiffParser.Row] { DiffParser.parse(diff) }
-    private var files: [DiffParser.FileSection] { DiffParser.fileSections(in: rows) }
+    init(diff: String, target: DiffNavigationTarget? = nil) {
+        self.target = target
+        let parsed = DiffParser.parse(diff)
+        self.rows = parsed
+        self.files = DiffParser.fileSections(in: parsed)
+    }
+
+    private var filteredFiles: [DiffParser.FileSection] {
+        guard !fileQuery.isEmpty else { return files }
+        return files.filter { $0.path.localizedCaseInsensitiveContains(fileQuery) }
+    }
+
+    private var changeRowIDs: [Int] {
+        rows.filter { $0.kind == .line && $0.isChange }.map(\.id)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,7 +51,7 @@ struct DiffView: View {
             GeometryReader { viewport in
                 ScrollViewReader { proxy in
                     VStack(spacing: 0) {
-                        fileNavigator(proxy: proxy)
+                        navigationBar(proxy: proxy)
                         Divider()
                         ScrollView([.horizontal, .vertical]) {
                             LazyVStack(alignment: .leading, spacing: 0) {
@@ -43,6 +67,9 @@ struct DiffView: View {
                         }
                         .defaultScrollAnchor(.topLeading)
                     }
+                    .task(id: target?.id) {
+                        navigate(to: target, proxy: proxy)
+                    }
                 }
             }
         }
@@ -52,28 +79,71 @@ struct DiffView: View {
         mode == .split ? 1041 : 560
     }
 
-    @ViewBuilder private func fileNavigator(proxy: ScrollViewProxy) -> some View {
+    @ViewBuilder private func navigationBar(proxy: ScrollViewProxy) -> some View {
         if !files.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 6) {
-                    ForEach(files) { file in
-                        Button {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(file.id, anchor: .topLeading)
-                            }
-                        } label: {
-                            Label(file.path, systemImage: "doc.text")
-                                .lineLimit(1)
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                        .help(file.path)
+            VStack(spacing: 4) {
+                HStack {
+                    TextField(app.l("filter_files"), text: $fileQuery)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 240)
+                    Spacer()
+                    Button {
+                        moveChange(by: -1, proxy: proxy)
+                    } label: {
+                        Label(app.l("previous_change"), systemImage: "chevron.up")
                     }
+                    .disabled(changeRowIDs.isEmpty)
+                    Button {
+                        moveChange(by: 1, proxy: proxy)
+                    } label: {
+                        Label(app.l("next_change"), systemImage: "chevron.down")
+                    }
+                    .disabled(changeRowIDs.isEmpty)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .labelStyle(.iconOnly)
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(filteredFiles) { file in
+                            Button {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    proxy.scrollTo(file.id, anchor: .topLeading)
+                                }
+                            } label: {
+                                Label(file.path, systemImage: "doc.text")
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                            .help(file.path)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func moveChange(by offset: Int, proxy: ScrollViewProxy) {
+        guard !changeRowIDs.isEmpty else { return }
+        changeIndex = (changeIndex + offset + changeRowIDs.count) % changeRowIDs.count
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(changeRowIDs[changeIndex], anchor: .center)
+        }
+    }
+
+    private func navigate(to target: DiffNavigationTarget?, proxy: ScrollViewProxy) {
+        guard let target,
+              let rowID = DiffParser.targetRowID(
+                in: rows,
+                path: target.path,
+                line: target.line,
+                side: target.side
+              ) else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(rowID, anchor: .center)
         }
     }
 

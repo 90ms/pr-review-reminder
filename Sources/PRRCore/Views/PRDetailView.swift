@@ -9,6 +9,7 @@ public struct PRDetailView: View {
     @State private var pending: PendingAction?
     @State private var approveBody = ""
     @State private var layout: DetailLayout = .review
+    @State private var diffTarget: DiffNavigationTarget?
 
     private enum DetailLayout: String, CaseIterable, Identifiable {
         case review
@@ -199,8 +200,18 @@ public struct PRDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(editableComments.indices, id: \.self) { i in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(editableComments[i].path):\(editableComments[i].line) · \(editableComments[i].side)")
-                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                    Button {
+                        diffTarget = DiffNavigationTarget(
+                            path: editableComments[i].path,
+                            line: editableComments[i].line,
+                            side: editableComments[i].side
+                        )
+                        layout = .changes
+                    } label: {
+                        Text("\(editableComments[i].path):\(editableComments[i].line) · \(editableComments[i].side)")
+                            .font(.caption.monospaced())
+                    }
+                    .buttonStyle(.link)
                     TextEditor(text: Binding(
                         get: { editableComments[i].body },
                         set: { editableComments[i].body = $0 }
@@ -318,7 +329,7 @@ public struct PRDetailView: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 4)
                 }
-                DiffView(diff: diff)
+                DiffView(diff: diff, target: diffTarget)
             } else if item.details != nil {
                 detailPlaceholder(
                     systemImage: "doc.text.magnifyingglass",
