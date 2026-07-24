@@ -3,6 +3,7 @@ import SwiftUI
 public struct MenuContentView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.openWindow) private var openWindow
+    @State private var confirmingQuit = false
 
     private let maxListHeight: CGFloat = 620
     /// Above this many PRs, switch to a capped scroll area; at or below, the popover
@@ -20,6 +21,18 @@ public struct MenuContentView: View {
             footer
         }
         .frame(width: 460)
+        .confirmationDialog(
+            app.l("quit_while_busy"),
+            isPresented: $confirmingQuit,
+            titleVisibility: .visible
+        ) {
+            Button(app.l("quit_anyway"), role: .destructive) {
+                NSApplication.shared.terminate(nil)
+            }
+            Button(app.l("cancel"), role: .cancel) {}
+        } message: {
+            Text(app.l("quit_while_busy_help"))
+        }
     }
 
     private var header: some View {
@@ -121,7 +134,15 @@ public struct MenuContentView: View {
                 openWindow(id: "settings")
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }.buttonStyle(.borderless).font(.caption)
-            Button(app.l("quit")) { NSApplication.shared.terminate(nil) }.buttonStyle(.borderless).font(.caption)
+            Button(app.l("quit")) {
+                if app.hasActiveOperations {
+                    confirmingQuit = true
+                } else {
+                    NSApplication.shared.terminate(nil)
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
         }
         .padding(10)
     }
