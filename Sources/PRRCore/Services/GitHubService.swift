@@ -64,7 +64,9 @@ public final class GitHubService: Sendable {
         Command(executable: gh, arguments: ["api", "user", "--jq", ".login"])
     }
 
-    public static func searchPRsCommand(gh: String, owner: String, repositories: [String], limit: Int = 100) -> Command {
+    /// `gh search` paginates internally up to this limit. GitHub Search exposes
+    /// at most 1,000 results for a query.
+    public static func searchPRsCommand(gh: String, owner: String, repositories: [String], limit: Int = 1_000) -> Command {
         var args = ["search", "prs",
                     "--review-requested=@me",
                     "--state=open",
@@ -238,6 +240,36 @@ public final class GitHubService: Sendable {
             throw GitHubError("gh pr view failed: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Fetches cache keys with bounded concurrency so large review queues do not
+    /// perform a slow serial N+1 sequence or overwhelm the CLI/API.
+    public func fetchHeadShas(
+        _ pullRequests: [PullRequest],
+        maxConcurrent: Int = 6
+    ) async -> [String: String] {
+        guard !pullRequests.isEmpty else { return [:] }
+        let concurrency = max(1, min(maxConcurrent, pullRequests.count))
+        return await withTaskGroup(of: (String, String?).self) { group in
+            var iterator = pullRequests.makeIterator()
+            for _ in 0..<concurrency {
+                guard let pr = iterator.next() else { break }
+                group.addTask { [self] in
+                    (pr.id, try? await fetchHeadSha(pr))
+                }
+            }
+
+            var result: [String: String] = [:]
+            while let (id, sha) = await group.next() {
+                if let sha, !sha.isEmpty { result[id] = sha }
+                if let pr = iterator.next() {
+                    group.addTask { [self] in
+                        (pr.id, try? await fetchHeadSha(pr))
+                    }
+                }
+            }
+            return result
+        }
     }
 
     /// Prevent publishing an analysis against a different revision than the one

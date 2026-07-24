@@ -201,8 +201,10 @@ public final class AppState: ObservableObject {
         // Token-free restore: if a stored review matches the PR's current head
         // commit, reuse it instead of spending tokens again. (`github` from above.)
         if settings.historyEnabled {
+            let unrestored = items.filter { $0.analysis == nil }.map(\.pr)
+            let headShas = await github.fetchHeadShas(unrestored)
             for item in items where item.analysis == nil {
-                guard let sha = try? await github.fetchHeadSha(item.pr),
+                guard let sha = headShas[item.id],
                       let rec = history.record(repository: item.pr.repository, number: item.pr.number, headSha: sha),
                       let i = items.firstIndex(where: { $0.id == item.id }) else { continue }
                 items[i].details = rec.details

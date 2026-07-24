@@ -46,6 +46,7 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertTrue(search.arguments.contains("--review-requested=@me"))
         XCTAssertTrue(search.arguments.contains("--owner"))
         XCTAssertTrue(search.arguments.contains("fastlane-dev"))
+        XCTAssertTrue(search.arguments.contains("1000"))
 
         let scoped = GitHubService.searchPRsCommand(gh: gh, owner: "fastlane-dev", repositories: ["beez", "acme/web"])
         XCTAssertTrue(scoped.arguments.contains("fastlane-dev/beez"))
@@ -155,5 +156,29 @@ final class GitHubServiceTests: XCTestCase {
         } catch let error as GitHubError {
             XCTAssertTrue(error.message.contains("diff unavailable"))
         }
+    }
+
+    func testFetchHeadShasReturnsSuccessfulLookups() async {
+        let mock = MockProcessRunner()
+        mock.responder = { command in
+            let number = command.arguments.first(where: { Int($0) != nil }) ?? "0"
+            return CommandResult(exitCode: 0, stdout: "sha-\(number)\n", stderr: "")
+        }
+        let service = GitHubService(
+            runner: mock,
+            ghPath: "/usr/bin/gh",
+            readRetryDelays: []
+        )
+        let prs = (1...3).map {
+            PullRequest(
+                repository: "acme/widgets", number: $0, title: "PR \($0)",
+                author: "octocat", url: "https://example.com/pr/\($0)")
+        }
+
+        let shas = await service.fetchHeadShas(prs, maxConcurrent: 2)
+
+        XCTAssertEqual(shas["acme/widgets#1"], "sha-1")
+        XCTAssertEqual(shas["acme/widgets#2"], "sha-2")
+        XCTAssertEqual(shas["acme/widgets#3"], "sha-3")
     }
 }
