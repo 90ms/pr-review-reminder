@@ -51,8 +51,17 @@ install_link() {
     require_app
     mkdir -p "$APPLICATIONS_DIR"
     if [[ -L "$APP_LINK" ]]; then
-        if [[ "$(readlink "$APP_LINK")" == "$APP_PATH" ]]; then
+        local current_target
+        current_target="$(readlink "$APP_LINK")"
+        if [[ "$current_target" == "$APP_PATH" ]]; then
             echo "Already linked: $APP_LINK"
+            return
+        fi
+        if [[ "$current_target" == */Cellar/pr-review-reminder/*/libexec/"$APP_NAME" \
+              && "$APP_PATH" == */Cellar/pr-review-reminder/*/libexec/"$APP_NAME" ]]; then
+            rm "$APP_LINK"
+            ln -s "$APP_PATH" "$APP_LINK"
+            echo "Relinked: $APP_LINK -> $APP_PATH"
             return
         fi
         echo "Refusing to replace an existing symlink: $APP_LINK" >&2

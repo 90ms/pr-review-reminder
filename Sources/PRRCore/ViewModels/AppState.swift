@@ -35,6 +35,10 @@ public final class AppState: ObservableObject {
     @Published public private(set) var nextRun: Date?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
+    @Published public private(set) var updateInfo: AppUpdateInfo?
+    @Published public private(set) var isCheckingUpdate = false
+    @Published public private(set) var isInstallingUpdate = false
+    @Published public private(set) var updateMessage: String?
     /// PR currently shown in the detail window.
     @Published public var selectedItemID: String?
     /// Persisted review history, newest first.
@@ -50,6 +54,7 @@ public final class AppState: ObservableObject {
     private var ghPath: String?
     private var claudePath: String?
     private var codexPath: String?
+    private var brewPath: String?
     private var scheduleTimer: Timer?
     private var didBootstrap = false
     private var reviewTasks: [String: Task<Void, Never>] = [:]
@@ -150,6 +155,7 @@ public final class AppState: ObservableObject {
         self.ghPath = await locator.path(for: "gh")
         self.claudePath = await locator.path(for: "claude")
         self.codexPath = await locator.path(for: "codex")
+        self.brewPath = await locator.path(for: "brew")
     }
 
     // MARK: - Settings
@@ -164,6 +170,46 @@ public final class AppState: ObservableObject {
             selectedHistoryID = nil
         }
         scheduleNextRun()
+    }
+
+    public func checkForUpdates() async {
+        guard !isCheckingUpdate, !isInstallingUpdate else { return }
+        guard let brewPath else {
+            updateMessage = l("update_homebrew_only")
+            return
+        }
+        isCheckingUpdate = true
+        updateMessage = nil
+        defer { isCheckingUpdate = false }
+        do {
+            updateInfo = try await HomebrewUpdateService(runner: runner).check(
+                brew: brewPath,
+                bundleVersion: Bundle.main.object(
+                    forInfoDictionaryKey: "CFBundleShortVersionString"
+                ) as? String
+            )
+        } catch {
+            updateMessage = error.localizedDescription
+        }
+    }
+
+    public func installUpdate() async {
+        guard !isCheckingUpdate, !isInstallingUpdate else { return }
+        guard let brewPath, let info = updateInfo, info.updateAvailable else { return }
+        isInstallingUpdate = true
+        updateMessage = nil
+        defer { isInstallingUpdate = false }
+        do {
+            try await HomebrewUpdateService(runner: runner).upgrade(brew: brewPath)
+            updateInfo = AppUpdateInfo(
+                currentVersion: info.latestVersion,
+                latestVersion: info.latestVersion,
+                updateAvailable: false
+            )
+            updateMessage = l("update_restart")
+        } catch {
+            updateMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Collection + analysis

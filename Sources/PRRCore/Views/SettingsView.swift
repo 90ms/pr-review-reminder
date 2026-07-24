@@ -118,6 +118,38 @@ public struct SettingsView: View {
                 Button(app.l("recheck")) { Task { await app.diagnose() } }
             }
 
+            Section(app.l("sec_update")) {
+                if let info = app.updateInfo {
+                    LabeledContent(app.l("current_version"), value: info.currentVersion)
+                    LabeledContent(app.l("latest_version"), value: info.latestVersion)
+                    if info.updateAvailable {
+                        Button(app.l("install_update")) {
+                            Task { await app.installUpdate() }
+                        }
+                        .disabled(app.isInstallingUpdate)
+                    } else {
+                        Label(app.l("up_to_date"), systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+                Button(app.isCheckingUpdate ? app.l("checking_update") : app.l("check_update")) {
+                    Task { await app.checkForUpdates() }
+                }
+                .disabled(app.isCheckingUpdate || app.isInstallingUpdate)
+                if app.isInstallingUpdate {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text(app.l("installing_update"))
+                    }
+                }
+                if let message = app.updateMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
             HStack {
                 Spacer()
                 Button(app.l("save")) {

@@ -1,0 +1,87 @@
+import XCTest
+@testable import PRRCore
+
+final class HomebrewUpdateServiceTests: XCTestCase {
+    private let outdatedJSON = """
+    [{
+      "name": "pr-review-reminder",
+      "full_name": "90ms/tap/pr-review-reminder",
+      "versions": { "stable": "0.2.2" },
+      "installed": [{ "version": "0.2.1" }]
+    }]
+    """
+
+    func testParseInfoFindsAvailableUpdate() throws {
+        let info = try HomebrewUpdateService.parseInfo(
+            outdatedJSON,
+            bundleVersion: "0.2.1"
+        )
+        XCTAssertEqual(
+            info,
+            AppUpdateInfo(
+                currentVersion: "0.2.1",
+                latestVersion: "0.2.2",
+                updateAvailable: true
+            )
+        )
+    }
+
+    func testParseInfoUsesInstalledVersionForDevelopmentBundle() throws {
+        let info = try HomebrewUpdateService.parseInfo(
+            outdatedJSON,
+            bundleVersion: nil
+        )
+        XCTAssertEqual(info.currentVersion, "0.2.1")
+    }
+
+    func testCommandsTargetOnlyProjectFormula() {
+        XCTAssertEqual(
+            HomebrewUpdateService.infoCommand(brew: "/opt/homebrew/bin/brew").arguments,
+            ["info", "--json=v1", "90ms/tap/pr-review-reminder"]
+        )
+        XCTAssertEqual(
+            HomebrewUpdateService.upgradeCommand(brew: "/opt/homebrew/bin/brew").arguments,
+            ["upgrade", "90ms/tap/pr-review-reminder"]
+        )
+        XCTAssertEqual(
+            HomebrewUpdateService.launcherPath(for: "/opt/homebrew/bin/brew"),
+            "/opt/homebrew/bin/pr-review-reminder"
+        )
+    }
+
+    func testCheckUpdatesDefinitionsThenReadsInfo() async throws {
+        let mock = MockProcessRunner()
+        let json = outdatedJSON
+        mock.responder = { command in
+            if command.arguments.first == "info" {
+                return CommandResult(exitCode: 0, stdout: json, stderr: "")
+            }
+            return CommandResult(exitCode: 0, stdout: "", stderr: "")
+        }
+        let service = HomebrewUpdateService(runner: mock)
+
+        let info = try await service.check(
+            brew: "/opt/homebrew/bin/brew",
+            bundleVersion: "0.2.1"
+        )
+
+        XCTAssertTrue(info.updateAvailable)
+        XCTAssertEqual(mock.commands.map(\.arguments), [
+            ["update"],
+            ["info", "--json=v1", "90ms/tap/pr-review-reminder"],
+        ])
+    }
+
+    func testUpgradeRelinksApplicationAfterFormulaUpgrade() async throws {
+        let mock = MockProcessRunner()
+        let service = HomebrewUpdateService(runner: mock)
+
+        try await service.upgrade(brew: "/opt/homebrew/bin/brew")
+
+        XCTAssertEqual(mock.commands.map(\.executable), [
+            "/opt/homebrew/bin/brew",
+            "/opt/homebrew/bin/pr-review-reminder",
+        ])
+        XCTAssertEqual(mock.commands[1].arguments, ["--install-app"])
+    }
+}
