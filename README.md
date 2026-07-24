@@ -81,7 +81,7 @@ Sources/
                       #   SettingsView, HistoryView, FeedbackView, Components
     Support/          # ProcessRunner, ToolLocator, Localization, DiffParser, Notifier
   PRReviewReminder/   # @main App 진입 (창 씬 + --doctor 진단 모드)
-Tests/PRRCoreTests/   # 43개 단위/통합 테스트 + gh 출력 픽스처
+Tests/PRRCoreTests/   # 단위/오케스트레이션 테스트 + gh 출력 픽스처
 Scripts/build-app.sh  # .app 번들 조립 (LSUIElement 메뉴바 앱)
 docs/SPEC.md          # 계약(수용 기준·검증)
 tasks/plan.md         # 실행 계획
