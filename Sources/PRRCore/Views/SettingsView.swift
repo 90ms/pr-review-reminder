@@ -124,7 +124,7 @@ public struct SettingsView: View {
                     LabeledContent(app.l("latest_version"), value: info.latestVersion)
                     if info.updateAvailable {
                         Button(app.l("install_update")) {
-                            Task { await app.installUpdate() }
+                            app.startUpdateInstall()
                         }
                         .disabled(app.updateStage.isBusy)
                     } else {
@@ -133,13 +133,17 @@ public struct SettingsView: View {
                     }
                 }
                 Button(app.l("check_update")) {
-                    Task { await app.checkForUpdates() }
+                    app.startUpdateCheck()
                 }
                 .disabled(app.updateStage.isBusy)
                 if app.updateStage.isBusy {
                     HStack {
                         ProgressView().controlSize(.small)
                         Text(updateStageLabel)
+                        Spacer()
+                        if app.updateStage != .restarting && app.updateStage != .cancelling {
+                            Button(app.l("cancel")) { app.cancelUpdate() }
+                        }
                     }
                 }
                 if case let .failed(operation, message) = app.updateStage {
@@ -152,6 +156,13 @@ public struct SettingsView: View {
                         .textSelection(.enabled)
                 } else if app.updateStage == .restartRequired {
                     Text(app.l("update_restart"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button(app.l("restart_now")) {
+                        Task { await app.restartAfterUpdate() }
+                    }
+                } else if app.updateStage == .cancelled {
+                    Text(app.l("update_cancelled"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -187,6 +198,8 @@ public struct SettingsView: View {
         case .readingVersion: return app.l("update_stage_version")
         case .upgradingFormula: return app.l("update_stage_build")
         case .relinkingApplication: return app.l("update_stage_link")
+        case .restarting: return app.l("update_stage_restart")
+        case .cancelling: return app.l("update_stage_cancelling")
         default: return ""
         }
     }
@@ -197,6 +210,7 @@ public struct SettingsView: View {
         case .readVersion: return app.l("update_failed_version")
         case .upgradeFormula: return app.l("update_failed_build")
         case .relinkApplication: return app.l("update_failed_link")
+        case .restartApplication: return app.l("update_failed_restart")
         }
     }
 

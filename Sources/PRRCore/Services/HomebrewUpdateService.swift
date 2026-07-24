@@ -17,6 +17,7 @@ public enum HomebrewUpdateOperation: String, Sendable, Equatable {
     case readVersion
     case upgradeFormula
     case relinkApplication
+    case restartApplication
 }
 
 public enum HomebrewUpdateError: LocalizedError, Sendable, Equatable {
@@ -67,6 +68,14 @@ public struct HomebrewUpdateService: Sendable {
             .deletingLastPathComponent()
             .appendingPathComponent("pr-review-reminder")
             .path
+    }
+
+    public static func restartCommand(home: String) -> Command {
+        Command(
+            executable: "/usr/bin/open",
+            arguments: ["-n", "\(home)/Applications/PR Review Reminder.app"],
+            timeout: 30
+        )
     }
 
     public static func parseInfo(_ raw: String, bundleVersion: String?) throws -> AppUpdateInfo {
@@ -147,6 +156,16 @@ public struct HomebrewUpdateService: Sendable {
             throw HomebrewUpdateError.commandFailed(
                 operation: .relinkApplication,
                 message: Self.failureMessage(relink)
+            )
+        }
+    }
+
+    public func launchUpdatedApplication(home: String) async throws {
+        let result = try await runner.run(Self.restartCommand(home: home))
+        guard result.succeeded else {
+            throw HomebrewUpdateError.commandFailed(
+                operation: .restartApplication,
+                message: Self.failureMessage(result)
             )
         }
     }

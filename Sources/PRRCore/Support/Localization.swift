@@ -176,6 +176,11 @@ public struct L10n: Sendable {
         "update_failed_version": "Could not read version information",
         "update_failed_build": "Could not build or install the update",
         "update_failed_link": "The update installed, but the Applications link could not be updated",
+        "update_stage_restart": "Opening the updated application…",
+        "update_failed_restart": "The update installed, but the application could not be restarted",
+        "update_cancelled": "Update operation cancelled.",
+        "update_stage_cancelling": "Cancelling the Homebrew operation…",
+        "restart_now": "Restart now",
         // feedback window
         "fb_title": "Title",
         "fb_body": "Details",
@@ -323,6 +328,11 @@ public struct L10n: Sendable {
         "update_failed_version": "버전 정보를 확인하지 못했습니다",
         "update_failed_build": "업데이트를 빌드하거나 설치하지 못했습니다",
         "update_failed_link": "업데이트는 설치했지만 Applications 링크를 갱신하지 못했습니다",
+        "update_stage_restart": "업데이트된 앱을 여는 중…",
+        "update_failed_restart": "업데이트는 설치했지만 앱을 다시 시작하지 못했습니다",
+        "update_cancelled": "업데이트 작업을 취소했습니다.",
+        "update_stage_cancelling": "Homebrew 작업을 취소하는 중…",
+        "restart_now": "지금 다시 시작",
         // feedback window
         "fb_title": "제목",
         "fb_body": "내용",

@@ -26,11 +26,15 @@ public enum AppUpdateStage: Equatable {
     case upgradingFormula
     case relinkingApplication
     case restartRequired
+    case restarting
+    case cancelling
+    case cancelled
     case failed(operation: HomebrewUpdateOperation?, message: String)
 
     public var isBusy: Bool {
         switch self {
-        case .refreshingTap, .readingVersion, .upgradingFormula, .relinkingApplication:
+        case .refreshingTap, .readingVersion, .upgradingFormula,
+             .relinkingApplication, .restarting, .cancelling:
             return true
         default:
             return false
@@ -83,6 +87,7 @@ public final class AppState: ObservableObject {
     private var scheduleTimer: Timer?
     private var didBootstrap = false
     private var reviewTasks: [String: Task<Void, Never>] = [:]
+    private var updateTask: Task<Void, Never>?
 
     public init(runner: ProcessRunning = SystemProcessRunner(),
                 settingsStore: SettingsStore = SettingsStore(),
@@ -215,6 +220,8 @@ public final class AppState: ObservableObject {
                 ) as? String
             )
             updateStage = .idle
+        } catch is CancellationError {
+            updateStage = .cancelled
         } catch {
             updateStage = updateFailure(error)
         }
@@ -235,6 +242,49 @@ public final class AppState: ObservableObject {
                 updateAvailable: false
             )
             updateStage = .restartRequired
+        } catch is CancellationError {
+            updateStage = .cancelled
+        } catch {
+            updateStage = updateFailure(error)
+        }
+    }
+
+    public func startUpdateCheck() {
+        guard updateTask == nil, !updateStage.isBusy else { return }
+        updateTask = Task { [weak self] in
+            guard let self else { return }
+            await self.checkForUpdates()
+            self.updateTask = nil
+        }
+    }
+
+    public func startUpdateInstall() {
+        guard updateTask == nil, !updateStage.isBusy else { return }
+        updateTask = Task { [weak self] in
+            guard let self else { return }
+            await self.installUpdate()
+            self.updateTask = nil
+        }
+    }
+
+    public func cancelUpdate() {
+        guard updateStage.isBusy else { return }
+        updateTask?.cancel()
+        updateStage = .cancelling
+    }
+
+    public func restartAfterUpdate() async {
+        guard updateStage == .restartRequired else { return }
+        updateStage = .restarting
+        do {
+            try await HomebrewUpdateService(runner: runner).launchUpdatedApplication(
+                home: FileManager.default.homeDirectoryForCurrentUser.path
+            )
+            #if canImport(AppKit)
+            NSApplication.shared.terminate(nil)
+            #else
+            updateStage = .restartRequired
+            #endif
         } catch {
             updateStage = updateFailure(error)
         }

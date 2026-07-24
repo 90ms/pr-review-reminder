@@ -47,6 +47,10 @@ final class HomebrewUpdateServiceTests: XCTestCase {
             HomebrewUpdateService.launcherPath(for: "/opt/homebrew/bin/brew"),
             "/opt/homebrew/bin/pr-review-reminder"
         )
+        XCTAssertEqual(
+            HomebrewUpdateService.restartCommand(home: "/Users/test").arguments,
+            ["-n", "/Users/test/Applications/PR Review Reminder.app"]
+        )
     }
 
     func testCheckUpdatesDefinitionsThenReadsInfo() async throws {
@@ -121,6 +125,29 @@ final class HomebrewUpdateServiceTests: XCTestCase {
             XCTAssertEqual(
                 error as? HomebrewUpdateError,
                 .commandFailed(operation: .relinkApplication, message: "link conflict")
+            )
+        }
+    }
+
+    func testRestartFailureIdentifiesInstalledButNotRestartedState() async {
+        let mock = MockProcessRunner()
+        mock.defaultResult = CommandResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "could not open app"
+        )
+        let service = HomebrewUpdateService(runner: mock)
+
+        do {
+            try await service.launchUpdatedApplication(home: "/Users/test")
+            XCTFail("Expected restart to fail")
+        } catch {
+            XCTAssertEqual(
+                error as? HomebrewUpdateError,
+                .commandFailed(
+                    operation: .restartApplication,
+                    message: "could not open app"
+                )
             )
         }
     }
