@@ -36,6 +36,8 @@ public final class AppState: ObservableObject {
     @Published public var selectedItemID: String?
     /// Persisted review history, newest first.
     @Published public private(set) var historyItems: [ReviewRecord] = []
+    /// Persisted review currently shown in the read-only history detail window.
+    @Published public var selectedHistoryID: String?
 
     private let runner: ProcessRunning
     private let locator: ToolLocator
@@ -75,8 +77,45 @@ public final class AppState: ObservableObject {
     public var l: L10n { L10n(language: settings.appLanguage) }
 
     public var selectedItem: PRItem? { items.first { $0.id == selectedItemID } }
+    public var selectedHistoryRecord: ReviewRecord? {
+        historyItems.first { $0.id == selectedHistoryID }
+    }
 
     public func select(_ item: PRItem) { selectedItemID = item.id }
+    public func selectHistory(_ record: ReviewRecord) { selectedHistoryID = record.id }
+
+    /// Promotes a history record to the current work list for a fresh review.
+    ///
+    /// The persisted details are deliberately not reused: fetching details here
+    /// ensures the review runs against the PR's current head and current diff.
+    @discardableResult
+    public func prepareReReview(from record: ReviewRecord) async -> String? {
+        if ghPath == nil {
+            await diagnose()
+        }
+        guard let ghPath else {
+            lastError = "gh is not ready."
+            return nil
+        }
+
+        let pr = record.pullRequest
+        do {
+            let details = try await GitHubService(runner: runner, ghPath: ghPath).fetchDetails(pr)
+            var item = PRItem(pr: pr)
+            item.details = details
+            if let index = items.firstIndex(where: { $0.id == item.id }) {
+                items[index] = item
+            } else {
+                items.insert(item, at: 0)
+            }
+            selectedItemID = item.id
+            lastError = nil
+            return item.id
+        } catch {
+            lastError = "\(error)"
+            return nil
+        }
+    }
 
     // MARK: - Lifecycle
 
@@ -232,27 +271,30 @@ public final class AppState: ObservableObject {
             return
         }
         lastError = nil
-        var failures: [String] = []
-        for comment in comments {
-            do {
-                try await github.postInlineComment(comment, on: item.pr, commitSha: details.headSha)
-            } catch {
-                // Isolate failures (e.g. a line that isn't part of the diff) so the
-                // remaining comments still post.
-                failures.append("\(comment.path):\(comment.line)")
-            }
-        }
-        if !failures.isEmpty {
-            lastError = "Some comments failed to post: \(failures.joined(separator: ", "))"
+        do {
+            try await github.postReview(
+                comments: comments, on: item.pr, commitSha: details.headSha)
+        } catch {
+            lastError = "\(error)"
         }
     }
 
     /// Posts inline comments and then approves in one action.
     public func postInlineCommentsAndApprove(for item: PRItem, comments: [InlineComment], approveBody: String) async {
-        await postInlineComments(for: item, comments: comments)
-        // Only approve if posting didn't record an error.
-        if lastError == nil {
-            await approve(item, body: approveBody)
+        guard let ghPath, let details = item.details else {
+            lastError = "Missing PR details; refresh first."
+            return
+        }
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        do {
+            try await github.requireCurrentHead(details.headSha, for: item.pr)
+            try await github.postReview(
+                comments: comments, on: item.pr, commitSha: details.headSha,
+                approve: true, body: approveBody)
+            items.removeAll { $0.id == item.id }
+            lastError = nil
+        } catch {
+            lastError = "\(error)"
         }
     }
 

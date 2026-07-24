@@ -66,6 +66,17 @@ final class GitHubServiceTests: XCTestCase {
 
         let approveNoBody = GitHubService.approveCommand(gh: gh, repository: "fastlane-dev/beez", number: 42, body: nil)
         XCTAssertFalse(approveNoBody.arguments.contains("--body"))
+
+        let batch = try! GitHubService.reviewCommand(
+            gh: gh, repository: "fastlane-dev/beez", number: 42,
+            comments: [comment], commitSha: "abc123", approve: true, body: "LGTM")
+        XCTAssertEqual(batch.arguments, [
+            "api", "repos/fastlane-dev/beez/pulls/42/reviews", "--input", "-"
+        ])
+        let payload = try! JSONSerialization.jsonObject(with: Data(batch.stdin!.utf8)) as! [String: Any]
+        XCTAssertEqual(payload["commit_id"] as? String, "abc123")
+        XCTAssertEqual(payload["event"] as? String, "APPROVE")
+        XCTAssertEqual((payload["comments"] as? [[String: Any]])?.count, 1)
     }
 
     func testRequireCurrentHeadRejectsStaleReview() async throws {

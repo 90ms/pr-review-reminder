@@ -85,6 +85,46 @@ public final class GitHubService: Sendable {
         ])
     }
 
+    public static func reviewCommand(
+        gh: String,
+        repository: String,
+        number: Int,
+        comments: [InlineComment],
+        commitSha: String,
+        approve: Bool,
+        body: String? = nil
+    ) throws -> Command {
+        struct Payload: Encodable {
+            struct Comment: Encodable {
+                let path: String
+                let line: Int
+                let side: String
+                let body: String
+            }
+            let commit_id: String
+            let event: String
+            let body: String
+            let comments: [Comment]
+        }
+        let payload = Payload(
+            commit_id: commitSha,
+            event: approve ? "APPROVE" : "COMMENT",
+            body: body ?? "",
+            comments: comments.map {
+                Payload.Comment(path: $0.path, line: $0.line, side: $0.side, body: $0.body)
+            }
+        )
+        let data = try JSONEncoder().encode(payload)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw GitHubError("Could not encode the review payload.")
+        }
+        return Command(
+            executable: gh,
+            arguments: ["api", "repos/\(repository)/pulls/\(number)/reviews", "--input", "-"],
+            stdin: json
+        )
+    }
+
     public static func summaryCommentCommand(gh: String, repository: String, number: Int, body: String) -> Command {
         Command(executable: gh, arguments: ["pr", "comment", String(number), "-R", repository, "--body", body])
     }
@@ -206,6 +246,26 @@ public final class GitHubService: Sendable {
     public func postInlineComment(_ comment: InlineComment, on pr: PullRequest, commitSha: String) async throws -> CommandResult {
         let result = try await runner.run(Self.inlineCommentCommand(gh: gh, repository: pr.repository, number: pr.number, comment: comment, commitSha: commitSha))
         guard result.succeeded else { throw GitHubError("post inline comment failed: \(result.stderr)") }
+        return result
+    }
+
+    /// Posts all inline comments as one GitHub review, avoiding a partially
+    /// published set when one comment is invalid.
+    @discardableResult
+    public func postReview(
+        comments: [InlineComment],
+        on pr: PullRequest,
+        commitSha: String,
+        approve: Bool = false,
+        body: String? = nil
+    ) async throws -> CommandResult {
+        let command = try Self.reviewCommand(
+            gh: gh, repository: pr.repository, number: pr.number,
+            comments: comments, commitSha: commitSha, approve: approve, body: body)
+        let result = try await runner.run(command)
+        guard result.succeeded else {
+            throw GitHubError("post review failed: \(result.stderr)")
+        }
         return result
     }
 
