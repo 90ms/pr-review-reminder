@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operation-specific failures, cancellation, and an explicit restart action.
 - Settings show storage locations, sizes, last-save times, and persistence
   failures; corrupt history JSON is backed up before recovery.
+- GitHub refresh diagnostics record successful retries, rate-limit failures,
+  timestamps, and the 1,000-result Search API ceiling.
 
 ### Fixed
 

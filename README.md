@@ -108,6 +108,7 @@ pr-review-reminder --doctor
 | 영역 | 내용 |
 |---|---|
 | PR 수집 | `review-requested:@me` 기반, owner/repository 범위 설정, 최대 1,000건 검색 |
+| 조회 진단 | GitHub 재시도 횟수, rate limit 실패와 1,000건 검색 상한 표시 |
 | AI 리뷰 | Claude/Codex CLI, 사용자 프롬프트·리뷰 규칙, 10분 timeout과 취소 |
 | 상세·Diff | 리뷰/변경/나란히 집중 보기, 조회 실패 재시도, 변경 파일 선택 이동, 긴 줄 가로 스크롤 |
 | 게시 안전 | 미리보기, 게시 직전 head SHA 재확인, 단일 GitHub review 제출 |
