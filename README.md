@@ -92,6 +92,7 @@ pr-review-reminder --doctor
 2. 사용할 AI 도구(`claude` 또는 `codex`)와 리뷰 출력 언어
 3. 수동 수집 또는 매일/주기별 스케줄
 4. 히스토리 보존 기간, Codex 단가와 선택적 로컬 토큰 예산
+5. 알림, 로그인 시 실행, 최근 예약 실행 결과
 
 ## 사용 흐름
 
@@ -110,11 +111,11 @@ pr-review-reminder --doctor
 | PR 수집 | `review-requested:@me` 기반, owner/repository 범위 설정, 최대 1,000건 검색 |
 | 조회 진단 | GitHub 재시도 횟수, rate limit 실패와 1,000건 검색 상한 표시 |
 | AI 리뷰 | Claude/Codex CLI, 사용자 프롬프트·리뷰 규칙, 10분 timeout과 취소 |
-| 상세·Diff | 리뷰/변경/나란히 집중 보기, 조회 실패 재시도, 변경 파일 선택 이동, 긴 줄 가로 스크롤 |
+| 상세·Diff | 리뷰/변경/나란히 집중 보기, 파일 검색·변경 줄·인라인 코멘트 위치 이동, 긴 줄 가로 스크롤 |
 | 게시 안전 | 미리보기, 게시 직전 head SHA 재확인, 단일 GitHub review 제출 |
 | 히스토리 | 상세/diff 저장, 같은 head 결과 복원, 보존 기간과 전체 삭제 |
 | 사용량 | Claude 보고 비용, Codex 설정 단가 기반 추정, 기간별 로컬 토큰 예산 |
-| 자동화 | 매일 또는 N시간 간격 수집, 시스템 알림, 선택적 자동 분석 |
+| 자동화 | 매일 또는 N시간 간격 수집, 최근 실행 결과 보존, 실패 알림, 로그인 시 실행, 선택적 자동 분석 |
 | 업데이트 | 단계별 진행·실패 표시, 취소, Applications 링크 갱신과 앱 재시작 |
 | 언어 | 앱 UI와 리뷰 출력 언어를 독립적으로 설정 |
 | 피드백 | 내용을 AI로 정돈하고 사용자 확인 후 이 프로젝트의 GitHub 이슈로 등록 |
@@ -224,6 +225,7 @@ Scripts/             앱 패키징, launcher, Formula renderer
 - [현재 제품 명세](docs/SPEC.md)
 - [Homebrew 배포 가이드](docs/HOMEBREW.md)
 - [릴리스 가이드](docs/RELEASING.md)
+- [macOS 수동 검증 체크리스트](docs/MACOS_VALIDATION.md)
 - [실행 계획](tasks/plan.md)
 - [변경 기록](CHANGELOG.md)
 

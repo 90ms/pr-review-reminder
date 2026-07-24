@@ -16,11 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failures; corrupt history JSON is backed up before recovery.
 - GitHub refresh diagnostics record successful retries, rate-limit failures,
   timestamps, and the 1,000-result Search API ceiling.
+- Diff file filtering, previous/next changed-line navigation, and inline-comment
+  links that jump to the matching file, side, and line.
+- Recent scheduled refresh results persist across launches and show failures in
+  Settings; scheduled failures can trigger a notification.
+- A launch-at-login preference and a quit confirmation for active work.
+- Release automation can open a reviewable Homebrew tap Formula pull request
+  when its optional token is configured.
 
 ### Fixed
 
 - Diff loading failures now show the error and a retry action instead of an
   indefinite progress indicator, with empty diffs handled separately.
+- Persisted schedule state initializes without accessing partially initialized
+  application state.
 
 ## [0.2.2] - 2026-07-24
 
