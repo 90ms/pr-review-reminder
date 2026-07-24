@@ -8,7 +8,16 @@ APP_NAME="PR Review Reminder"
 BUNDLE_ID="kr.fastlane.prreviewreminder"
 EXECUTABLE="PRReviewReminder"
 BUILD_DIR="$ROOT/.build/release"
-DIST_DIR="$ROOT/dist"
+OUTPUT_DIR="${OUTPUT_DIR:-dist}"
+if [[ "$OUTPUT_DIR" = /* ]]; then
+    DIST_DIR="$OUTPUT_DIR"
+else
+    DIST_DIR="$ROOT/$OUTPUT_DIR"
+fi
+if [[ -z "$DIST_DIR" || "$DIST_DIR" == "/" || "$DIST_DIR" == "$ROOT" ]]; then
+    echo "Refusing unsafe OUTPUT_DIR: $DIST_DIR" >&2
+    exit 2
+fi
 APP_DIR="$DIST_DIR/$APP_NAME.app"
 APP_VERSION="${APP_VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
@@ -17,7 +26,15 @@ echo "==> Building release binary"
 cd "$ROOT"
 swift build -c release
 
+for tool in qlmanage sips iconutil; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Required macOS packaging tool not found: $tool" >&2
+        exit 1
+    fi
+done
+
 echo "==> Assembling $APP_DIR"
+mkdir -p "$DIST_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"

@@ -32,14 +32,19 @@ jobs:
         run: swift test
 
       - name: Assemble application bundle
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/prr-package
+          APP_VERSION: 0.0.0-ci
+          BUILD_NUMBER: ${{ github.run_number }}
         run: ./Scripts/build-app.sh
 
       - name: Validate application bundle
         shell: bash
         run: |
           set -euo pipefail
-          app="dist/PR Review Reminder.app"
+          app="$RUNNER_TEMP/prr-package/PR Review Reminder.app"
           test -x "$app/Contents/MacOS/PRReviewReminder"
           test -f "$app/Contents/PkgInfo"
           plutil -lint "$app/Contents/Info.plist"
-          test "$(defaults read "$PWD/$app/Contents/Info" CFBundleIdentifier)" = "kr.fastlane.prreviewreminder"
+          test "$(defaults read "$app/Contents/Info" CFBundleIdentifier)" = "kr.fastlane.prreviewreminder"
+          test "$(defaults read "$app/Contents/Info" CFBundleShortVersionString)" = "0.0.0-ci"
