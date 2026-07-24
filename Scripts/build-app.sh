@@ -1,6 +1,6 @@
 #!/bin/bash
 # Assembles a runnable macOS .app bundle from the SwiftPM release build.
-# Menu-bar-only (LSUIElement) app; no code signing (local use).
+# Menu-bar-only (LSUIElement) app; ad-hoc signed for local use.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,6 +10,8 @@ EXECUTABLE="PRReviewReminder"
 BUILD_DIR="$ROOT/.build/release"
 DIST_DIR="$ROOT/dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
+APP_VERSION="${APP_VERSION:-0.1.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
 echo "==> Building release binary"
 cd "$ROOT"
@@ -52,9 +54,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_ID</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$BUILD_NUMBER</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1</string>
+    <string>$APP_VERSION</string>
     <key>CFBundleExecutable</key>
     <string>$EXECUTABLE</string>
     <key>CFBundleIconFile</key>
