@@ -30,10 +30,10 @@ public struct HistoryView: View {
         return HStack(spacing: 20) {
             VStack(alignment: .leading) {
                 Text(app.l("total_usage")).font(.caption).foregroundStyle(.secondary)
-                Text("\(totals.tokens.formatted(.number)) tokens").font(.title3.weight(.semibold))
+                Text("\(totals.tokens.formatted(.number)) \(app.l("tokens_unit"))").font(.title3.weight(.semibold))
             }
             VStack(alignment: .leading) {
-                Text("Cost").font(.caption).foregroundStyle(.secondary)
+                Text(app.l("cost")).font(.caption).foregroundStyle(.secondary)
                 Text(String(format: "$%.4f", totals.costUSD)).font(.title3.weight(.semibold))
             }
             VStack(alignment: .leading) {
@@ -73,7 +73,9 @@ public struct HistoryView: View {
                     }
                 }
                 Spacer()
-                if let usage = rec.usage, case let label = usage.label(), !label.isEmpty {
+                if let usage = rec.usage,
+                   case let label = usage.label(tokensUnit: app.l("tokens_unit")),
+                   !label.isEmpty {
                     Text(label).font(.caption2).foregroundStyle(.secondary)
                 }
                 Button {

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DiffView: View {
+    @EnvironmentObject private var app: AppState
     let diff: String
     @State private var mode: Mode = .split
 
@@ -11,14 +12,14 @@ struct DiffView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $mode) {
-                Text("Split").tag(Mode.split)
-                Text("Unified").tag(Mode.unified)
+                Text(app.l("diff_split")).tag(Mode.split)
+                Text(app.l("diff_unified")).tag(Mode.unified)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(8)
             Divider()
-            ScrollView([.vertical]) {
+            ScrollView([.horizontal, .vertical]) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(rows) { row in
                         rowView(row)
@@ -72,10 +73,10 @@ struct DiffView: View {
             Text(cell?.text ?? "")
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 6).padding(.vertical, 1)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minWidth: 520, alignment: .leading)
         .background(bg)
     }
 
@@ -100,7 +101,7 @@ struct DiffView: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(color ?? .primary)
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 6).padding(.vertical, 1)
         .frame(maxWidth: .infinity, alignment: .leading)

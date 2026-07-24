@@ -23,6 +23,9 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         let en = L10n(language: .english)
         XCTAssertEqual(ko("approve"), "승인")
         XCTAssertEqual(en("approve"), "Approve")
+        XCTAssertEqual(ko("diff_split"), "분할")
+        XCTAssertEqual(ko("tokens_unit"), "토큰")
+        XCTAssertEqual(en("diff_unified"), "Unified")
         // missing key returns the key itself
         XCTAssertEqual(ko("__no_such_key__"), "__no_such_key__")
     }

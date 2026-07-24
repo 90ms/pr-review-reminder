@@ -73,7 +73,9 @@ public struct PRDetailView: View {
             Text(item.pr.title).font(.title3.weight(.semibold))
             HStack(spacing: 12) {
                 Label(item.pr.author, systemImage: "person")
-                if let usage = item.usage, case let label = usage.label(), !label.isEmpty {
+                if let usage = item.usage,
+                   case let label = usage.label(tokensUnit: app.l("tokens_unit")),
+                   !label.isEmpty {
                     Label(label, systemImage: "circlebadge.2")
                 }
             }

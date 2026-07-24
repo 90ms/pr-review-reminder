@@ -61,10 +61,10 @@ public struct AIUsage: Sendable, Codable, Equatable {
     }
 
     /// Compact label, e.g. "12,345 tokens · $0.0123" or "34,772 tokens".
-    public func label(costUnavailable: String = "") -> String {
+    public func label(costUnavailable: String = "", tokensUnit: String = "tokens") -> String {
         var parts: [String] = []
         if let t = tokens {
-            parts.append("\(t.formatted(.number)) tokens")
+            parts.append("\(t.formatted(.number)) \(tokensUnit)")
         }
         if let c = costUSD {
             parts.append(String(format: "$%.4f", c))

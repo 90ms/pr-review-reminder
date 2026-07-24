@@ -62,7 +62,7 @@ struct PRCardView: View {
     }
 
     private func usageLabel(_ usage: AIUsage) -> String? {
-        let text = usage.label()
+        let text = usage.label(tokensUnit: app.l("tokens_unit"))
         return text.isEmpty ? nil : text
     }
 
