@@ -19,7 +19,17 @@ public struct FileHistoryPersistence: HistoryPersisting {
     }
 
     public func read() -> Data? { try? Data(contentsOf: url) }
-    public func write(_ data: Data) { try? data.write(to: url, options: .atomic) }
+    public func write(_ data: Data) {
+        do {
+            try data.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: NSNumber(value: Int16(0o600))],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            // Persistence remains best-effort; callers keep the in-memory copy.
+        }
+    }
 }
 
 /// Loads/saves review history and computes cumulative usage.
@@ -67,6 +77,21 @@ public final class HistoryStore: @unchecked Sendable {
 
     public func delete(id: String) {
         records.removeAll { $0.id == id }
+        persist()
+    }
+
+    public func deleteAll() {
+        records.removeAll()
+        persist()
+    }
+
+    /// Removes records older than the configured number of days. A non-positive
+    /// value means "keep until manually deleted".
+    public func applyRetention(days: Int, now: Date = Date()) {
+        guard days > 0,
+              let cutoff = Calendar(identifier: .gregorian).date(byAdding: .day, value: -days, to: now)
+        else { return }
+        records.removeAll { $0.reviewedAt < cutoff }
         persist()
     }
 

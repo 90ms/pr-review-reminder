@@ -60,6 +60,22 @@ public struct SettingsView: View {
                 Toggle(app.l("auto_review"), isOn: $app.settings.autoReview)
             }
 
+            Section(app.l("sec_history")) {
+                Toggle(app.l("save_history"), isOn: $app.settings.historyEnabled)
+                if app.settings.historyEnabled {
+                    Stepper(
+                        app.settings.historyRetentionDays == 0
+                            ? app.l("retention_forever")
+                            : String(format: app.l("retention_days"), app.settings.historyRetentionDays),
+                        value: $app.settings.historyRetentionDays,
+                        in: 0...365
+                    )
+                    Text(app.l("history_privacy_help"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section(app.l("sec_prompt")) {
                 TextEditor(text: $app.settings.promptTemplate)
                     .font(.caption.monospaced()).frame(minHeight: 100)

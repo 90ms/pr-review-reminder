@@ -59,4 +59,16 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(store2.all().count, 3)
         XCTAssertEqual(store2.all().map(\.number), [2, 3, 1]) // newest first by reviewedAt
     }
+
+    func testRetentionAndDeleteAll() {
+        let store = HistoryStore(persistence: MemPersistence())
+        store.upsert(record("o/r", 1, "old", tokens: 1, cost: 0, at: 100))
+        store.upsert(record("o/r", 2, "new", tokens: 1, cost: 0, at: 900_000))
+
+        store.applyRetention(days: 5, now: Date(timeIntervalSince1970: 1_000_000))
+        XCTAssertEqual(store.all().map(\.number), [2])
+
+        store.deleteAll()
+        XCTAssertTrue(store.all().isEmpty)
+    }
 }

@@ -45,6 +45,12 @@ public struct AppSettings: Sendable, Codable, Equatable {
     /// When true, code review runs automatically for every fetched PR. When false
     /// (default), collection only fetches PRs and review is triggered per-PR by the user.
     public var autoReview: Bool
+    /// Whether completed analyses (including PR content and diff) are persisted
+    /// locally for history and cache restoration.
+    public var historyEnabled: Bool
+    /// Number of days to retain history. Zero keeps records until manually
+    /// deleted.
+    public var historyRetentionDays: Int
 
     public init(
         owner: String = "fastlane-dev",
@@ -60,7 +66,9 @@ public struct AppSettings: Sendable, Codable, Equatable {
         reviewLanguage: AppLanguage = .system,
         reviewSkill: String = "",
         feedbackRepository: String = "",
-        autoReview: Bool = false
+        autoReview: Bool = false,
+        historyEnabled: Bool = true,
+        historyRetentionDays: Int = 0
     ) {
         self.owner = owner
         self.repositories = repositories
@@ -76,6 +84,8 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.reviewSkill = reviewSkill
         self.feedbackRepository = feedbackRepository
         self.autoReview = autoReview
+        self.historyEnabled = historyEnabled
+        self.historyRetentionDays = historyRetentionDays
     }
 
     // Tolerant decoding: missing keys (e.g. from an older saved schema) fall back
@@ -97,6 +107,8 @@ public struct AppSettings: Sendable, Codable, Equatable {
         reviewSkill = try c.decodeIfPresent(String.self, forKey: .reviewSkill) ?? d.reviewSkill
         feedbackRepository = try c.decodeIfPresent(String.self, forKey: .feedbackRepository) ?? d.feedbackRepository
         autoReview = try c.decodeIfPresent(Bool.self, forKey: .autoReview) ?? d.autoReview
+        historyEnabled = try c.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? d.historyEnabled
+        historyRetentionDays = try c.decodeIfPresent(Int.self, forKey: .historyRetentionDays) ?? d.historyRetentionDays
     }
 
     public static let defaultPromptTemplate = """

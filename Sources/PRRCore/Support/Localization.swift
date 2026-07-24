@@ -88,6 +88,11 @@ public struct L10n: Sendable {
         "reviews_count": "%d reviews",
         "delete": "Delete",
         "restored": "Restored from history (no tokens used)",
+        "sec_history": "Local history",
+        "save_history": "Save review history locally",
+        "retention_forever": "Retention: until manually deleted",
+        "retention_days": "Retention: %d days",
+        "history_privacy_help": "History contains PR text, diffs, and AI output in Application Support.",
         // settings
         "sec_github": "GitHub",
         "owner": "Owner / org",
@@ -181,6 +186,11 @@ public struct L10n: Sendable {
         "reviews_count": "리뷰 %d건",
         "delete": "삭제",
         "restored": "히스토리에서 복원됨 (토큰 미사용)",
+        "sec_history": "로컬 히스토리",
+        "save_history": "리뷰 히스토리를 로컬에 저장",
+        "retention_forever": "보존: 직접 삭제할 때까지",
+        "retention_days": "보존: %d일",
+        "history_privacy_help": "히스토리에는 PR 본문, diff, AI 결과가 Application Support에 저장됩니다.",
         // settings
         "sec_github": "GitHub",
         "owner": "Owner / org",
