@@ -1,6 +1,24 @@
 import XCTest
 @testable import PRRCore
 
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+
+    func increment() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        storage += 1
+        return storage
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+}
+
 final class GitHubServiceTests: XCTestCase {
     // AC2 — parse gh search JSON into PullRequest values.
     func testParsePullRequests() throws {
@@ -109,10 +127,10 @@ final class GitHubServiceTests: XCTestCase {
 
     func testReadRetriesAfterTransientFailure() async throws {
         let mock = MockProcessRunner()
-        var attempts = 0
+        let attempts = LockedCounter()
         mock.responder = { _ in
-            attempts += 1
-            return attempts == 1
+            let attempt = attempts.increment()
+            return attempt == 1
                 ? CommandResult(exitCode: 1, stdout: "", stderr: "temporary")
                 : CommandResult(exitCode: 0, stdout: "sha\n", stderr: "")
         }
@@ -125,8 +143,9 @@ final class GitHubServiceTests: XCTestCase {
             repository: "fastlane-dev/beez", number: 42, title: "Title",
             author: "octocat", url: "https://example.com/pr/42")
 
-        XCTAssertEqual(try await service.fetchHeadSha(pr), "sha")
-        XCTAssertEqual(attempts, 2)
+        let sha = try await service.fetchHeadSha(pr)
+        XCTAssertEqual(sha, "sha")
+        XCTAssertEqual(attempts.value, 2)
     }
 
     func testDiffFailureIsNotReturnedAsEmptyDiff() async throws {
