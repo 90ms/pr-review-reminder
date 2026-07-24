@@ -58,6 +58,12 @@ public enum RefreshTrigger: Sendable, Equatable {
     case scheduled
 }
 
+public struct FeedbackDraft: Identifiable, Sendable, Equatable {
+    public let id = UUID()
+    public let title: String
+    public let body: String
+}
+
 /// A pull request plus its (optional) analysis and fetched details.
 public struct PRItem: Identifiable, Equatable {
     public var pr: PullRequest
@@ -82,6 +88,8 @@ public final class AppState: ObservableObject {
     @Published public private(set) var nextRun: Date?
     @Published public private(set) var scheduleRuns: [ScheduleRunRecord]
     @Published public private(set) var launchAtLoginError: String?
+    @Published public private(set) var pendingTerminationReport: UnexpectedTerminationReport?
+    @Published public private(set) var feedbackDraft: FeedbackDraft?
     @Published public private(set) var lastRefreshDiagnostic: RefreshDiagnostic?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
@@ -102,6 +110,7 @@ public final class AppState: ObservableObject {
     private let history: HistoryStore
     private let scheduleRunStore: ScheduleRunStore
     private let launchAtLoginManager: LaunchAtLoginManaging
+    private let sessionHealthStore: SessionHealthStore
 
     private var ghPath: String?
     private var claudePath: String?
@@ -117,6 +126,7 @@ public final class AppState: ObservableObject {
                 history: HistoryStore = HistoryStore(),
                 scheduleRunStore: ScheduleRunStore = ScheduleRunStore(),
                 launchAtLoginManager: LaunchAtLoginManaging = LaunchAtLoginService(),
+                sessionHealthStore: SessionHealthStore = SessionHealthStore(),
                 autoBootstrap: Bool = true) {
         self.runner = runner
         self.locator = ToolLocator(runner: runner)
@@ -124,6 +134,7 @@ public final class AppState: ObservableObject {
         self.history = history
         self.scheduleRunStore = scheduleRunStore
         self.launchAtLoginManager = launchAtLoginManager
+        self.sessionHealthStore = sessionHealthStore
         let loadedSettings = settingsStore.load()
         self.settings = loadedSettings
         self.settingsStorageDiagnostic = settingsStore.diagnostic
@@ -131,6 +142,8 @@ public final class AppState: ObservableObject {
         self.historyItems = loadedSettings.historyEnabled ? history.all() : []
         self.scheduleRuns = scheduleRunStore.all()
         self.launchAtLoginError = nil
+        self.feedbackDraft = nil
+        self.pendingTerminationReport = nil
         // Start diagnosis and scheduling at launch, not only when the popover opens.
         // Tests may opt out to drive lifecycle transitions deterministically.
         if autoBootstrap {
@@ -175,6 +188,21 @@ public final class AppState: ObservableObject {
     public func select(_ item: PRItem) { selectedItemID = item.id }
     public func selectHistory(_ record: ReviewRecord) { selectedHistoryID = record.id }
 
+    public func dismissTerminationReport() {
+        pendingTerminationReport = nil
+    }
+
+    public func prepareTerminationFeedback() {
+        guard let report = pendingTerminationReport else { return }
+        feedbackDraft = FeedbackDraft(title: report.issueTitle, body: report.issueBody)
+        pendingTerminationReport = nil
+    }
+
+    public func clearFeedbackDraft(id: UUID) {
+        guard feedbackDraft?.id == id else { return }
+        feedbackDraft = nil
+    }
+
     /// Promotes a history record to the current work list for a fresh review.
     ///
     /// The persisted details are deliberately not reused: fetching details here
@@ -213,6 +241,11 @@ public final class AppState: ObservableObject {
     public func bootstrap() async {
         guard !didBootstrap else { return }
         didBootstrap = true
+        pendingTerminationReport = sessionHealthStore.beginSession(
+            appVersion: Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleShortVersionString"
+            ) as? String ?? "development"
+        )
         Notifier.requestAuthorization()
         await diagnose()
         scheduleNextRun()

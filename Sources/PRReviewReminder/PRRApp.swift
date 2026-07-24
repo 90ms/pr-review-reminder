@@ -1,8 +1,15 @@
 import SwiftUI
 import PRRCore
 
+final class PRRAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) {
+        SessionHealthStore().endSession()
+    }
+}
+
 @main
 struct PRRApp: App {
+    @NSApplicationDelegateAdaptor(PRRAppDelegate.self) private var appDelegate
     @StateObject private var app = AppState()
 
     init() {

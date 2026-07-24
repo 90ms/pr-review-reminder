@@ -33,6 +33,24 @@ public struct MenuContentView: View {
         } message: {
             Text(app.l("quit_while_busy_help"))
         }
+        .alert(
+            app.l("unexpected_termination_title"),
+            isPresented: Binding(
+                get: { app.pendingTerminationReport != nil },
+                set: { if !$0 { app.dismissTerminationReport() } }
+            )
+        ) {
+            Button(app.l("report_issue")) {
+                app.prepareTerminationFeedback()
+                openWindow(id: "feedback")
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            Button(app.l("dismiss"), role: .cancel) {
+                app.dismissTerminationReport()
+            }
+        } message: {
+            Text(app.l("unexpected_termination_message"))
+        }
     }
 
     private var header: some View {

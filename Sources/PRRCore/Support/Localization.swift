@@ -205,6 +205,10 @@ public struct L10n: Sendable {
         "quit_while_busy": "Work is still in progress",
         "quit_while_busy_help": "Quitting now cancels the active refresh, review, detail load, or update.",
         "quit_anyway": "Quit anyway",
+        "unexpected_termination_title": "The previous session ended unexpectedly",
+        "unexpected_termination_message": "Would you like to review a diagnostic draft and optionally submit it as a GitHub issue?",
+        "report_issue": "Review issue",
+        "dismiss": "Dismiss",
         // feedback window
         "fb_title": "Title",
         "fb_body": "Details",
@@ -381,6 +385,10 @@ public struct L10n: Sendable {
         "quit_while_busy": "작업이 진행 중입니다",
         "quit_while_busy_help": "지금 종료하면 진행 중인 새로고침, 리뷰, 상세 조회 또는 업데이트가 취소됩니다.",
         "quit_anyway": "그래도 종료",
+        "unexpected_termination_title": "이전 실행이 비정상적으로 종료되었습니다",
+        "unexpected_termination_message": "진단 초안을 확인한 뒤 GitHub 이슈로 등록할까요?",
+        "report_issue": "이슈 검토",
+        "dismiss": "닫기",
         // feedback window
         "fb_title": "제목",
         "fb_body": "내용",

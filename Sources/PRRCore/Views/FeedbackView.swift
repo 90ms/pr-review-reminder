@@ -72,5 +72,11 @@ public struct FeedbackView: View {
         }
         .padding(16)
         .frame(width: 520, height: 460)
+        .onChange(of: app.feedbackDraft?.id, initial: true) {
+            guard let draft = app.feedbackDraft else { return }
+            title = draft.title
+            body_ = draft.body
+            app.clearFeedbackDraft(id: draft.id)
+        }
     }
 }
