@@ -12,10 +12,18 @@ public enum LoadState: Equatable {
     public var isFailed: Bool { if case .failed = self { return true }; return false }
 }
 
+public enum DetailLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed(String)
+}
+
 /// A pull request plus its (optional) analysis and fetched details.
 public struct PRItem: Identifiable, Equatable {
     public var pr: PullRequest
     public var details: PRDetails?
+    public var detailsState: DetailLoadState = .idle
     public var analysis: Analysis?
     public var usage: AIUsage?
     public var state: LoadState = .idle
@@ -255,6 +263,7 @@ public final class AppState: ObservableObject {
                       let rec = history.record(repository: item.pr.repository, number: item.pr.number, headSha: sha),
                       let i = items.firstIndex(where: { $0.id == item.id }) else { continue }
                 items[i].details = rec.details
+                items[i].detailsState = .loaded
                 items[i].analysis = rec.analysis
                 items[i].usage = rec.usage
                 items[i].state = .done
@@ -272,12 +281,28 @@ public final class AppState: ObservableObject {
     /// Fetches PR details (diff/body) without running AI, so the diff can be shown
     /// before a review is requested.
     public func ensureDetails(_ itemID: String) async {
-        guard let item = items.first(where: { $0.id == itemID }) else { return }
-        guard item.details == nil, let ghPath else { return }
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+        guard items[index].details == nil else {
+            items[index].detailsState = .loaded
+            return
+        }
+        guard items[index].detailsState != .loading else { return }
+        guard let ghPath else {
+            items[index].detailsState = .failed("gh is not ready.")
+            return
+        }
+        let pr = items[index].pr
+        items[index].detailsState = .loading
         let github = GitHubService(runner: runner, ghPath: ghPath)
-        if let details = try? await github.fetchDetails(item.pr) {
+        do {
+            let details = try await github.fetchDetails(pr)
             if let i = items.firstIndex(where: { $0.id == itemID }) {
                 items[i].details = details
+                items[i].detailsState = .loaded
+            }
+        } catch {
+            if let i = items.firstIndex(where: { $0.id == itemID }) {
+                items[i].detailsState = .failed("\(error)")
             }
         }
     }
@@ -307,7 +332,10 @@ public final class AppState: ObservableObject {
             } else {
                 details = try await github.fetchDetails(pr)
             }
-            mutate { $0.details = details }
+            mutate {
+                $0.details = details
+                $0.detailsState = .loaded
+            }
             if settings.historyEnabled, settings.reviewTokenBudget > 0 {
                 let used = history.tokenTotal(windowDays: settings.reviewBudgetWindowDays)
                 guard used < settings.reviewTokenBudget else {

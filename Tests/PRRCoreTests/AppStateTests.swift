@@ -15,6 +15,18 @@ private final class AppStateMemoryHistoryPersistence: HistoryPersisting, @unchec
     func write(_ data: Data) { self.data = data }
 }
 
+private final class DetailAttemptCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func increment() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        value += 1
+        return value
+    }
+}
+
 private final class CancellableAppStateRunner: ProcessRunning, @unchecked Sendable {
     func run(_ command: Command) async throws -> CommandResult {
         if command.executable == "/bin/zsh", command.arguments.first == "-lc" {
@@ -192,6 +204,43 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.items.first?.usage?.tokens, 15)
         XCTAssertEqual(history.all().first?.headSha, "new-sha")
         XCTAssertTrue(runner.commands.contains { $0.arguments.first == "-p" })
+    }
+
+    func testEnsureDetailsExposesFailureAndCanRetry() async {
+        let attempts = DetailAttemptCounter()
+        let (state, _) = await makeState { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "new-sha\n", stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(
+                    exitCode: 0,
+                    stdout: Self.detailsJSON(sha: "new-sha"),
+                    stderr: ""
+                )
+            }
+            if command.arguments.prefix(2) == ["pr", "diff"] {
+                return attempts.increment() <= 3
+                    ? CommandResult(exitCode: 1, stdout: "", stderr: "rate limited")
+                    : CommandResult(exitCode: 0, stdout: "diff --git a/a b/a", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+        await state.refresh()
+
+        await state.ensureDetails("acme/widgets#42")
+        guard case let .failed(message) = state.items.first?.detailsState else {
+            return XCTFail("Expected detail loading to expose the failure")
+        }
+        XCTAssertTrue(message.contains("rate limited"))
+        XCTAssertNil(state.items.first?.details)
+
+        await state.ensureDetails("acme/widgets#42")
+        XCTAssertEqual(state.items.first?.detailsState, .loaded)
+        XCTAssertEqual(state.items.first?.details?.diff, "diff --git a/a b/a")
     }
 
     func testReviewBudgetBlockFailsBeforeInvokingAI() async {

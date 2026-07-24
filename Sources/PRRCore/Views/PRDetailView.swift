@@ -282,12 +282,61 @@ public struct PRDetailView: View {
                         .padding(.bottom, 4)
                 }
                 DiffView(diff: diff)
+            } else if item.details != nil {
+                detailPlaceholder(
+                    systemImage: "doc.text.magnifyingglass",
+                    message: app.l("diff_empty")
+                )
             } else {
-                Spacer()
-                HStack { Spacer(); ProgressView().controlSize(.small); Spacer() }
-                Spacer()
+                switch item.detailsState {
+                case .failed(let message):
+                    detailError(message: message, itemID: item.id)
+                case .idle, .loading:
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                        Text(app.l("loading_diff")).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    Spacer()
+                case .loaded:
+                    detailPlaceholder(
+                        systemImage: "doc.text.magnifyingglass",
+                        message: app.l("diff_empty")
+                    )
+                }
             }
         }
+    }
+
+    private func detailError(message: String, itemID: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.title2)
+                .foregroundStyle(.orange)
+            Text(app.l("diff_load_failed")).font(.headline)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .textSelection(.enabled)
+            Button {
+                Task { await app.ensureDetails(itemID) }
+            } label: {
+                Label(app.l("retry"), systemImage: "arrow.clockwise")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+    }
+
+    private func detailPlaceholder(systemImage: String, message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: systemImage).font(.title2).foregroundStyle(.secondary)
+            Text(message).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
