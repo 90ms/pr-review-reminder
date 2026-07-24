@@ -75,4 +75,26 @@ final class DiffParserTests: XCTestCase {
         XCTAssertEqual(rows[2].left?.text, "remove2")
         XCTAssertNil(rows[2].right)
     }
+
+    func testFileSectionsPointAtFileHeaderRows() {
+        let diff = """
+        diff --git a/Sources/A.swift b/Sources/A.swift
+        @@ -1 +1 @@
+        -old
+        +new
+        diff --git a/README.md b/README.md
+        @@ -1 +1 @@
+        -before
+        +after
+        """
+
+        let rows = DiffParser.parse(diff)
+        let sections = DiffParser.fileSections(in: rows)
+
+        XCTAssertEqual(sections.map(\.path), ["Sources/A.swift", "README.md"])
+        XCTAssertEqual(
+            sections.map(\.id),
+            rows.filter { $0.kind == .fileHeader }.map(\.id)
+        )
+    }
 }

@@ -8,25 +8,72 @@ struct DiffView: View {
     enum Mode: String, CaseIterable, Identifiable { case split, unified; var id: String { rawValue } }
 
     private var rows: [DiffParser.Row] { DiffParser.parse(diff) }
+    private var files: [DiffParser.FileSection] { DiffParser.fileSections(in: rows) }
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $mode) {
-                Text(app.l("diff_split")).tag(Mode.split)
-                Text(app.l("diff_unified")).tag(Mode.unified)
+            HStack {
+                Picker("", selection: $mode) {
+                    Text(app.l("diff_split")).tag(Mode.split)
+                    Text(app.l("diff_unified")).tag(Mode.unified)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
             .padding(8)
             Divider()
-            ScrollView([.horizontal, .vertical]) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(rows) { row in
-                        rowView(row)
+            GeometryReader { viewport in
+                ScrollViewReader { proxy in
+                    VStack(spacing: 0) {
+                        fileNavigator(proxy: proxy)
+                        Divider()
+                        ScrollView([.horizontal, .vertical]) {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(rows) { row in
+                                    rowView(row)
+                                        .id(row.id)
+                                }
+                            }
+                            .frame(
+                                minWidth: max(viewport.size.width, minimumContentWidth),
+                                alignment: .topLeading
+                            )
+                        }
+                        .defaultScrollAnchor(.topLeading)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    private var minimumContentWidth: CGFloat {
+        mode == .split ? 1041 : 560
+    }
+
+    @ViewBuilder private func fileNavigator(proxy: ScrollViewProxy) -> some View {
+        if !files.isEmpty {
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(files) { file in
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(file.id, anchor: .topLeading)
+                            }
+                        } label: {
+                            Label(file.path, systemImage: "doc.text")
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .help(file.path)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+            }
+            .scrollIndicators(.hidden)
         }
     }
 
@@ -52,6 +99,7 @@ struct DiffView: View {
                     Divider()
                     cell(row.right, isChange: row.isChange, side: .right)
                 }
+                .frame(minWidth: minimumContentWidth, alignment: .leading)
             } else {
                 unifiedLine(row)
             }

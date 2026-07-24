@@ -3,6 +3,16 @@ import Foundation
 /// Parses a unified diff (as produced by `gh pr diff`) into rows suitable for a
 /// side-by-side (left = original, right = changed) view. Pure and testable.
 public enum DiffParser {
+    public struct FileSection: Sendable, Equatable, Identifiable {
+        public let id: Int
+        public let path: String
+
+        public init(id: Int, path: String) {
+            self.id = id
+            self.path = path
+        }
+    }
+
     public struct Cell: Sendable, Equatable {
         public let number: Int?
         public let text: String
@@ -84,6 +94,13 @@ public enum DiffParser {
         }
         flush()
         return rows
+    }
+
+    public static func fileSections(in rows: [Row]) -> [FileSection] {
+        rows.compactMap { row in
+            guard row.kind == .fileHeader, let path = row.header else { return nil }
+            return FileSection(id: row.id, path: path)
+        }
     }
 
     /// Extracts old/new start line numbers from a hunk header `@@ -a,b +c,d @@`.
