@@ -11,8 +11,11 @@ OUTPUT="$TEST_ROOT/Formula/pr-review-reminder.rb"
 "$ROOT/Scripts/render-homebrew-formula.sh" "1.2.3" "$SHA" "$OUTPUT"
 
 grep -q 'v1.2.3.tar.gz' "$OUTPUT"
-grep -q 'version "1.2.3"' "$OUTPUT"
 grep -q "sha256 \"$SHA\"" "$OUTPUT"
+if grep -q '^  version ' "$OUTPUT"; then
+    echo "Formula should infer its version from the source URL" >&2
+    exit 1
+fi
 if grep -q '__VERSION__\|__SHA256__' "$OUTPUT"; then
     echo "Formula placeholders were not fully rendered" >&2
     exit 1
