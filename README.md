@@ -73,6 +73,8 @@ brew uninstall pr-review-reminder
 ```
 
 제거해도 사용자 설정과 히스토리는 자동으로 삭제하지 않습니다.
+Homebrew 설치본은 앱의 **설정 → 업데이트**에서도 최신 Formula를 확인하고 설치할 수
+있습니다. 업데이트를 마친 뒤에는 앱을 종료하고 다시 열어야 새 버전이 실행됩니다.
 
 ## 첫 실행
 
@@ -106,11 +108,12 @@ pr-review-reminder --doctor
 |---|---|
 | PR 수집 | `review-requested:@me` 기반, owner/repository 범위 설정, 최대 1,000건 검색 |
 | AI 리뷰 | Claude/Codex CLI, 사용자 프롬프트·리뷰 규칙, 10분 timeout과 취소 |
-| Diff | Split/Unified 보기, 긴 줄 가로 스크롤, 인라인 초안 편집 |
+| Diff | Split/Unified 보기, 왼쪽 위 기준 정렬, 변경 파일 선택 이동, 긴 줄 가로 스크롤 |
 | 게시 안전 | 미리보기, 게시 직전 head SHA 재확인, 단일 GitHub review 제출 |
 | 히스토리 | 상세/diff 저장, 같은 head 결과 복원, 보존 기간과 전체 삭제 |
 | 사용량 | Claude 보고 비용, Codex 설정 단가 기반 추정, 기간별 로컬 토큰 예산 |
 | 자동화 | 매일 또는 N시간 간격 수집, 시스템 알림, 선택적 자동 분석 |
+| 업데이트 | 설정에서 Homebrew 최신 버전 확인과 사용자 실행 기반 업그레이드 |
 | 언어 | 앱 UI와 리뷰 출력 언어를 독립적으로 설정 |
 | 피드백 | 내용을 AI로 정돈하고 사용자 확인 후 이 프로젝트의 GitHub 이슈로 등록 |
 

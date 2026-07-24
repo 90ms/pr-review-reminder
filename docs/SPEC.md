@@ -84,12 +84,18 @@ Split/Unified diff를 확인한다. 게시 시 미리보기 시트를 거치며 
 프롬프트는 `{{TITLE}}`, `{{BODY}}`, `{{DIFF}}`, `{{SKILL}}`을 치환한다. diff는
 기본 60,000자로 제한하고 잘린 표시를 모델 입력에 추가한다.
 
+Homebrew 설치본은 설정에서 사용자가 요청할 때 Formula 정보를 갱신해 현재/최신 버전을
+표시한다. 업데이트 실행 역시 사용자 액션으로만 시작하며 완료 후 Applications symlink를
+새 Cellar 앱으로 갱신하고 재시작을 안내한다.
+
 ### 4.2 GitHub 연동
 
 - 수집: `gh search` 내부 pagination으로 owner 전체 또는 선택 저장소의 리뷰 요청 PR을
   GitHub Search 상한인 최대 1,000개까지 조회한다.
 - 캐시 확인용 head SHA는 최대 6개 동시 조회로 제한한다.
 - 상세: 본문, head SHA, additions/deletions, 전체 diff를 조회한다.
+- diff는 Split/Unified 모두 왼쪽 위에서 시작하고, 변경 파일 목록을 선택하면 해당
+  파일 헤더 위치로 스크롤한다.
 - 게시: 인라인 코멘트와 선택적 승인은 하나의 GitHub review API 요청으로 묶고,
   요약과 단독 승인은 `gh pr` 명령을 사용한다.
 - 게시 직전 현재 head SHA가 분석 시점과 같은지 검증하고, 다르면 재리뷰 전까지 차단한다.
@@ -191,6 +197,8 @@ flowchart LR
 | AC17 | 사용자가 진행 중 리뷰를 취소하면 CLI가 종료되고 취소 상태를 표시한다. |
 | AC18 | GitHub 읽기 실패를 제한 재시도하고 diff 실패를 빈 결과로 숨기지 않는다. |
 | AC19 | Swift 6 language mode에서 build/test/app bundle 검증이 통과한다. |
+| AC20 | Diff가 왼쪽 위에 정렬되고 변경 파일 선택 시 해당 파일 헤더로 이동한다. |
+| AC21 | Homebrew 설치본의 현재/최신 버전을 확인하고 사용자 액션으로만 업데이트한다. |
 
 ## 7. 검증
 

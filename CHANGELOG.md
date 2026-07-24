@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Settings can check the installed Homebrew Formula against the latest tap
+  version and install an update on explicit user action.
+
 ### Changed
 
 - User feedback now always targets the `90ms/pr-review-reminder` issue tracker.
+- Diff content is anchored at the top-leading edge and includes changed-file
+  navigation that scrolls to the selected file.
 
 ### Fixed
 
