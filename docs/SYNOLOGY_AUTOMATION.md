@@ -52,18 +52,53 @@ Slack App 관리 화면에서 **Create New App → From an app manifest**를 선
 Bot은 메시지 게시를 위한 `chat:write`만 요청한다. Socket Mode에서는 공개 Request
 URL이나 NAS 포트 포워딩이 필요 없다.
 
-## 2. NAS 전용 계정에서 CLI 로그인
+## 2. NAS 저장소와 CLI 로그인
 
-자동화 전용 Synology 사용자로 로그인한 셸에서 인증한다. Container Manager만
-사용하는 환경이라면 임시 도구 컨테이너 또는 별도 Linux 셸에서 동일한 host
-directory를 대상으로 로그인해야 한다.
+자동화 전용 Synology 사용자로 로그인한 셸에서 저장소와 설정 예제를 준비하고
+이미지를 빌드한다.
 
 ```bash
-gh auth login --hostname github.com --git-protocol https
-gh auth status
+cd /volume1/docker
+test -d pr-review-reminder/.git || \
+  git clone https://github.com/90ms/pr-review-reminder.git
+cd /volume1/docker/pr-review-reminder/automation/synology
+test -f .env || cp .env.example .env
+docker compose build
+```
 
-codex login
-codex --version
+GitHub CLI는 임시 컨테이너의 keyring이 컨테이너 종료와 함께 사라지지 않도록
+`--insecure-storage`로 NAS의 `hosts.yml`에 인증을 저장한다. 파일은 평문 토큰을
+포함하므로 directory와 파일 권한을 반드시 제한한다.
+
+```bash
+mkdir -p /volume1/homes/automation/.config/gh
+
+docker run --rm -it \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/home/worker \
+  -v /volume1/homes/automation/.config/gh:/home/worker/.config/gh \
+  --entrypoint gh \
+  pr-review-issue-worker:local \
+  auth login --hostname github.com --git-protocol https --insecure-storage
+
+chmod 700 /volume1/homes/automation/.config/gh
+chmod 600 /volume1/homes/automation/.config/gh/config.yml
+chmod 600 /volume1/homes/automation/.config/gh/hosts.yml
+```
+
+SSH 환경의 Codex 로그인은 device flow를 사용한다.
+
+```bash
+mkdir -p /volume1/homes/automation/.codex
+
+docker run --rm -it \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/home/worker \
+  -e CODEX_HOME=/home/worker/.codex \
+  -v /volume1/homes/automation/.codex:/home/worker/.codex \
+  --entrypoint codex \
+  pr-review-issue-worker:local \
+  login --device-auth
 ```
 
 기본 경로는 다음과 같다.
@@ -76,15 +111,10 @@ codex --version
 실제 경로가 다르면 `.env`의 `GH_CONFIG_DIR`, `CODEX_HOME_DIR`를 변경한다. 토큰이나
 인증 JSON을 저장소, Slack, GitHub 이슈에 붙여 넣지 않는다.
 
-## 3. 설정 파일 준비
-
-NAS에 저장소를 clone한 뒤 예제를 복사한다.
+## 3. 설정 파일과 데이터 경로 준비
 
 ```bash
-cd /volume1/docker
-git clone https://github.com/90ms/pr-review-reminder.git
-cd pr-review-reminder/automation/synology
-cp .env.example .env
+cd /volume1/docker/pr-review-reminder/automation/synology
 chmod 600 .env
 mkdir -p /volume1/docker/pr-review-issue-worker/data
 ```
@@ -107,12 +137,12 @@ Synology 사용자 UID/GID는 `id automation`으로 확인한다. 초기
 
 ## 4. GitHub 라벨 만들기
 
-다음 스크립트는 라벨을 생성하거나 설명과 색상을 맞춘다. GitHub에 쓰는 동작이므로
-내용을 확인한 뒤 한 번만 직접 실행한다.
+다음 명령은 이미지에 포함된 스크립트로 라벨을 생성하거나 설명과 색상을 맞춘다.
+GitHub에 쓰는 동작이므로 내용을 확인한 뒤 한 번만 직접 실행한다.
 
 ```bash
-GITHUB_REPOSITORY=90ms/pr-review-reminder \
-  ./scripts/setup-github-labels.sh
+docker compose run --rm \
+  --entrypoint setup-github-labels issue-worker
 ```
 
 ## 5. 빌드와 진단
@@ -123,7 +153,11 @@ docker compose run --rm issue-worker doctor
 ```
 
 진단은 Git, `gh`, Codex CLI와 데이터 경로를 확인한다. 인증 오류가 나면 mount 경로,
-PUID/GID와 host의 `gh auth status`를 먼저 확인한다.
+PUID/GID와 Compose 컨테이너의 `gh auth status`를 확인한다.
+
+```bash
+docker compose run --rm --entrypoint gh issue-worker auth status
+```
 
 ## 6. Dry run
 
@@ -203,6 +237,8 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
 ### clone은 되지만 push가 실패함
 
 - `gh` mount 경로와 `gh auth status`를 확인한다.
+- 임시 로그인 컨테이너에서는 `--insecure-storage`를 사용했는지 확인한다. 사용하지
+  않으면 token이 영속 NAS volume이 아닌 일회성 keyring에 저장될 수 있다.
 - GitHub 계정에 저장소 push 권한이 있는지 확인한다.
 - 컨테이너는 clone마다 로컬 Git credential helper를 `gh auth git-credential`로
   설정한다. SSH key는 사용하지 않는다.

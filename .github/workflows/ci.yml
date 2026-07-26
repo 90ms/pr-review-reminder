@@ -39,6 +39,15 @@ jobs:
           sh -n automation/synology/scripts/setup-github-labels.sh
           pr-issue-worker --help
 
+      - name: Build automation image
+        run: |
+          docker build \
+            --file automation/synology/Dockerfile \
+            --tag pr-review-issue-worker:test \
+            .
+          docker run --rm --entrypoint gh pr-review-issue-worker:test \
+            auth login --help | grep -q -- --insecure-storage
+
   build-and-test:
     name: Build, test, and validate app bundle
     runs-on: macos-15

@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications, dry-run mode, Docker Compose deployment, and NAS setup
   documentation for the issue worker.
 
+### Fixed
+
+- The Synology image now installs GitHub CLI from its official signed apt
+  repository and verifies persistent headless-login support instead of using
+  Debian's outdated community package.
+
 ## [0.3.1] - 2026-07-24
 
 ### Changed

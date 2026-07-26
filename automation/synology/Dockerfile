@@ -5,10 +5,19 @@ ARG CODEX_CLI_VERSION=0.137.0
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         ca-certificates \
-        gh \
         git \
         nodejs \
         npm \
+        wget \
+    && mkdir -p -m 755 /etc/apt/keyrings \
+    && wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+        https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install --yes --no-install-recommends gh \
+    && gh auth login --help | grep -q -- --insecure-storage \
     && npm install --global "@openai/codex@${CODEX_CLI_VERSION}" \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -16,6 +25,7 @@ RUN apt-get update \
 WORKDIR /opt/pr-issue-worker
 COPY automation/synology/pyproject.toml ./
 COPY automation/synology/src ./src
+COPY automation/synology/scripts/setup-github-labels.sh /usr/local/bin/setup-github-labels
 RUN python -m pip install --no-cache-dir .
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin worker \
