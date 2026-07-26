@@ -51,6 +51,11 @@ GitHub Issues <──── labels ── Automation Service ── Socket Mode 
 Slack은 Socket Mode로 연결한다. 따라서 NAS에 공개 HTTP endpoint나 포트
 포워딩을 만들 필요가 없다.
 
+Controller와 Runner는 서로 다른 Docker network에 둔다. Controller는 GitHub와
+Slack에 접근하지만 Runner network에는 참여하지 않는다. Runner는 외부 route가 없는
+internal network에서 인증 정보가 없는 egress proxy에만 연결하며, proxy는 TLS
+`CONNECT` 대상을 `*.openai.com`과 `*.chatgpt.com`으로 제한한다.
+
 ## Controller–Runner 작업 프로토콜
 
 Synology에서 Controller와 Codex Runner는 네트워크 API나 Docker socket 대신
@@ -109,6 +114,31 @@ codex-ready
   않는다.
 - GitHub와 Codex 인증은 NAS에 로그인된 `gh`/`codex` CLI 세션에 위임한다.
 - Slack 토큰, GitHub 인증 파일, Codex 세션과 실제 `.env`는 커밋하지 않는다.
+
+## Synology Runner 격리 경계
+
+일부 Synology 커널은 Codex의 bubblewrap user namespace와 legacy Landlock/seccomp
+방식을 모두 지원하지 않는다. 이 배포에서는 `CODEX_RUNNER_MODE=outer-container`를
+운영자가 명시했을 때만 Codex 내부 샌드박스를 우회하고 Runner 컨테이너 자체를 실행
+경계로 사용한다. Codex CLI가 이 플래그를 외부 샌드박스용이라고 정의하더라도,
+지원되는 Linux 호스트에서 `workspace-write`를 사용하는 것보다 방어 계층이 적다는
+잔여 위험은 유지된다.
+
+Runner에는 다음 제한을 모두 적용한다.
+
+- GitHub·Slack 환경 변수, `gh` CLI, Docker socket과 NAS 공유 폴더를 제공하지 않는다.
+- 승인된 workspace, 파일 큐와 Codex 로그인 디렉터리만 mount한다.
+- read-only root filesystem, 모든 capability 제거, `no-new-privileges`, PID·CPU·메모리
+  제한을 적용한다.
+- 외부 통신은 OpenAI/ChatGPT allowlist proxy만 통과한다.
+- Controller는 Codex와 GitHub 인증 값을 생성 결과에서 다시 찾아 유출이 의심되면
+  push하지 않는다.
+- Runner가 변경한 Git config를 폐기하고 고정 origin과 비활성 hook 설정을 복원한 뒤,
+  승인된 base SHA의 후손인지 확인한다.
+
+`privileged`, `SYS_ADMIN`, Docker socket 또는 `seccomp=unconfined`으로 bwrap을
+강제하는 구성은 지원하지 않는다. 더 강한 격리가 필요한 운영자는 user namespace를
+지원하는 별도 Linux VM에서 Runner를 실행해야 한다.
 
 ## 작업 격리와 중복 방지
 

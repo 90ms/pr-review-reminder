@@ -25,6 +25,7 @@ class ConfigTests(unittest.TestCase):
             Path(directory) / "runner-queue",
         )
         self.assertIn(".github/workflows/", config.protected_paths)
+        self.assertEqual(config.secret_scan_paths, ())
         self.assertFalse(config.dry_run)
 
     def test_rejects_invalid_repository(self) -> None:

@@ -31,6 +31,7 @@ class Config:
     git_bin: str
     dry_run: bool
     protected_paths: tuple[str, ...]
+    secret_scan_paths: tuple[Path, ...]
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Config:
@@ -88,6 +89,11 @@ class Config:
             git_bin=values.get("GIT_BIN", "git"),
             dry_run=_boolean(values.get("DRY_RUN", "false"), "DRY_RUN"),
             protected_paths=protected,
+            secret_scan_paths=tuple(
+                Path(item.strip()).expanduser()
+                for item in values.get("SECRET_SCAN_PATHS", "").split(",")
+                if item.strip()
+            ),
         )
 
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 import shutil
 import tempfile
@@ -19,6 +21,12 @@ from .process import (
 from .state import StateStore
 
 _TERMINAL_LABELS = ("codex-failed", "codex-blocked", "codex-pr-open")
+_TOKEN_PATTERN = re.compile(
+    rb"(?:gh[pousr]_[A-Za-z0-9_]{20,}|"
+    rb"xox[baprs]-[A-Za-z0-9-]{20,}|"
+    rb"sk-[A-Za-z0-9_-]{20,})"
+)
+_SECRET_KEY_PARTS = ("token", "secret", "password", "credential")
 
 
 class IssueWorker:
@@ -81,7 +89,8 @@ class IssueWorker:
 
             self._set_running_label(issue.number)
             workspace = self._prepare_workspace(issue, branch)
-            codex_result = self._run_codex(issue, workspace)
+            base_sha = self._git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
+            codex_result = self._run_codex(issue, workspace, base_sha, branch)
             status = JobStatus(codex_result["status"])
             if status is JobStatus.BLOCKED:
                 return self._blocked(
@@ -94,13 +103,24 @@ class IssueWorker:
             if status is JobStatus.FAILED:
                 raise RuntimeError(str(codex_result["summary"]))
 
-            changed_paths = self._changed_paths(workspace)
+            self._restore_repository_boundary(workspace, branch, base_sha)
+            changed_paths = self._changed_paths(workspace, base_sha)
             protected = self._protected_changes(changed_paths)
             if protected:
                 return self._blocked(
                     issue.number,
                     "Protected paths require manual implementation: "
                     + ", ".join(protected),
+                    workspace=workspace,
+                    branch=branch,
+                    details=codex_result,
+                )
+            leaked_paths = self._secret_leaks(workspace, changed_paths)
+            if leaked_paths:
+                return self._blocked(
+                    issue.number,
+                    "Generated changes contain credential material in: "
+                    + ", ".join(leaked_paths),
                     workspace=workspace,
                     branch=branch,
                     details=codex_result,
@@ -115,7 +135,7 @@ class IssueWorker:
                 )
 
             self._commit_remaining_changes(issue, workspace)
-            self._verify_branch(workspace, branch)
+            self._verify_branch(workspace, branch, base_sha)
 
             if self.config.dry_run:
                 self.state.finish(issue.number, "blocked", error="dry-run")
@@ -206,11 +226,15 @@ class IssueWorker:
         self._git(["checkout", "-b", branch], cwd=repository_path)
         return repository_path
 
-    def _run_codex(self, issue: Issue, workspace: Path) -> dict[str, object]:
+    def _run_codex(
+        self,
+        issue: Issue,
+        workspace: Path,
+        base_sha: str,
+        branch: str,
+    ) -> dict[str, object]:
         if self.job_client is None:
             raise RuntimeError("Codex runner queue is not configured")
-        branch = self._git(["branch", "--show-current"], cwd=workspace).stdout.strip()
-        base_sha = self._git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
         workspace_rel = (
             workspace.resolve()
             .relative_to(self.config.workspace_path.resolve())
@@ -243,14 +267,16 @@ class IssueWorker:
             "risks": list(response.risks),
         }
 
-    def _changed_paths(self, workspace: Path) -> list[str]:
+    def _changed_paths(self, workspace: Path, base_sha: str) -> list[str]:
         committed = self._git(
-            ["diff", "--name-only", f"origin/{self.config.base_branch}...HEAD"],
+            ["diff", "--no-ext-diff", "--name-only", f"{base_sha}...HEAD"],
             cwd=workspace,
         ).stdout.splitlines()
-        unstaged = self._git(["diff", "--name-only"], cwd=workspace).stdout.splitlines()
+        unstaged = self._git(
+            ["diff", "--no-ext-diff", "--name-only"], cwd=workspace
+        ).stdout.splitlines()
         staged = self._git(
-            ["diff", "--cached", "--name-only"], cwd=workspace
+            ["diff", "--no-ext-diff", "--cached", "--name-only"], cwd=workspace
         ).stdout.splitlines()
         untracked = self._git(
             ["ls-files", "--others", "--exclude-standard"], cwd=workspace
@@ -283,7 +309,7 @@ class IssueWorker:
                 cwd=workspace,
             )
 
-    def _verify_branch(self, workspace: Path, branch: str) -> None:
+    def _verify_branch(self, workspace: Path, branch: str, base_sha: str) -> None:
         current = self._git(["branch", "--show-current"], cwd=workspace).stdout.strip()
         if current != branch:
             raise RuntimeError(f"unexpected branch after Codex run: {current}")
@@ -291,11 +317,95 @@ class IssueWorker:
         if dirty:
             raise RuntimeError("worktree is dirty after commit")
         commits = self._git(
-            ["rev-list", "--count", f"origin/{self.config.base_branch}..HEAD"],
+            ["rev-list", "--count", f"{base_sha}..HEAD"],
             cwd=workspace,
         ).stdout.strip()
         if int(commits) < 1:
             raise RuntimeError("branch has no commits")
+        ancestor = self._git(
+            ["merge-base", "--is-ancestor", base_sha, "HEAD"],
+            cwd=workspace,
+            check=False,
+        )
+        if ancestor.returncode != 0:
+            raise RuntimeError("branch no longer descends from the approved base SHA")
+
+    def _restore_repository_boundary(
+        self,
+        workspace: Path,
+        branch: str,
+        base_sha: str,
+    ) -> None:
+        workspace_root = self.config.workspace_path.resolve()
+        if workspace.is_symlink() or not workspace.resolve().is_relative_to(
+            workspace_root
+        ):
+            raise RuntimeError("runner replaced the approved workspace path")
+        git_directory = workspace / ".git"
+        if git_directory.is_symlink() or not git_directory.is_dir():
+            raise RuntimeError("runner replaced the Git metadata directory")
+        if any(path.is_symlink() for path in git_directory.rglob("*")):
+            raise RuntimeError("runner created a symlink inside Git metadata")
+        hooks = git_directory / "hooks"
+        if hooks.exists() and any(
+            path.is_file() and not path.name.endswith(".sample")
+            for path in hooks.iterdir()
+        ):
+            raise RuntimeError("runner created an executable Git hook")
+
+        expected_remote = f"https://github.com/{self.config.repository}.git"
+        (git_directory / "config").write_text(
+            "[core]\n"
+            "\trepositoryformatversion = 0\n"
+            "\tfilemode = true\n"
+            "\tbare = false\n"
+            "\tlogallrefupdates = true\n"
+            "\thooksPath = /dev/null\n"
+            '[remote "origin"]\n'
+            f"\turl = {expected_remote}\n"
+            f"\tfetch = +refs/heads/{self.config.base_branch}:"
+            f"refs/remotes/origin/{self.config.base_branch}\n",
+            encoding="utf-8",
+        )
+        self._git(["cat-file", "-e", f"{base_sha}^{{commit}}"], cwd=workspace)
+        current = self._git(["branch", "--show-current"], cwd=workspace).stdout.strip()
+        if current != branch:
+            raise RuntimeError("runner changed the approved branch")
+
+    def _secret_leaks(self, workspace: Path, changed_paths: list[str]) -> list[str]:
+        known_secrets = _known_secret_values(self.config.secret_scan_paths)
+        leaked: list[str] = []
+        workspace_root = workspace.resolve()
+        for relative in changed_paths:
+            path = workspace / relative
+            if (
+                path.is_symlink()
+                or Path(relative).is_absolute()
+                or ".." in Path(relative).parts
+            ):
+                leaked.append(relative)
+                continue
+            try:
+                resolved = path.resolve()
+            except OSError:
+                leaked.append(relative)
+                continue
+            if not resolved.is_relative_to(workspace_root):
+                leaked.append(relative)
+                continue
+            if not path.is_file():
+                continue
+            try:
+                if path.stat().st_size > 10 * 1024 * 1024:
+                    continue
+                contents = path.read_bytes()
+            except OSError:
+                continue
+            if _TOKEN_PATTERN.search(contents) or any(
+                secret in contents for secret in known_secrets
+            ):
+                leaked.append(relative)
+        return leaked
 
     def _git(
         self,
@@ -303,12 +413,14 @@ class IssueWorker:
         *,
         cwd: Path,
         timeout: int = 120,
+        check: bool = True,
     ):
         return self.runner.run(
             [self.config.git_bin, *arguments],
             cwd=cwd,
             timeout=timeout,
             environment=minimal_environment(include_auth=True),
+            check=check,
         )
 
     def _set_running_label(self, issue_number: int) -> None:
@@ -383,3 +495,53 @@ def _job_result(
         docs=tuple(str(item) for item in details.get("docs", [])),
         risks=tuple(str(item) for item in details.get("risks", [])),
     )
+
+
+def _known_secret_values(paths: tuple[Path, ...]) -> set[bytes]:
+    secrets: set[bytes] = set()
+    for name, value in os.environ.items():
+        if (
+            any(part in name.upper() for part in ("TOKEN", "SECRET", "KEY"))
+            and len(value) >= 16
+        ):
+            secrets.add(value.encode())
+    for root in paths:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path.is_symlink():
+                continue
+            try:
+                if path.stat().st_size > 2 * 1024 * 1024:
+                    continue
+                contents = path.read_bytes()
+            except OSError:
+                continue
+            secrets.update(_TOKEN_PATTERN.findall(contents))
+            if path.suffix.lower() == ".json":
+                try:
+                    _collect_json_secrets(json.loads(contents), secrets)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+    return {value for value in secrets if len(value) >= 16}
+
+
+def _collect_json_secrets(
+    value: object,
+    secrets: set[bytes],
+    key: str = "",
+) -> None:
+    if isinstance(value, dict):
+        for child_key, child_value in value.items():
+            _collect_json_secrets(child_value, secrets, str(child_key))
+        return
+    if isinstance(value, list):
+        for child in value:
+            _collect_json_secrets(child, secrets, key)
+        return
+    if (
+        isinstance(value, str)
+        and len(value) >= 16
+        and any(part in key.lower() for part in _SECRET_KEY_PARTS)
+    ):
+        secrets.add(value.encode())

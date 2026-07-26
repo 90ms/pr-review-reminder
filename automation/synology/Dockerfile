@@ -1,13 +1,9 @@
 FROM python:3.12-slim-bookworm
 
-ARG CODEX_CLI_VERSION=0.137.0
-
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         ca-certificates \
         git \
-        nodejs \
-        npm \
         wget \
     && mkdir -p -m 755 /etc/apt/keyrings \
     && wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg \
@@ -18,7 +14,6 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install --yes --no-install-recommends gh \
     && gh auth login --help | grep -q -- --insecure-storage \
-    && npm install --global "@openai/codex@${CODEX_CLI_VERSION}" \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
