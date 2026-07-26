@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Controller-side validation restores trusted Git configuration and rejects
   protected paths, changed symlinks, invalid ancestry, and generated credential
   material before pushing a branch.
+- The default Synology Compose deployment no longer requires PID, CPU CFS, or
+  memory cgroups that are unavailable on some DSM kernels.
 
 ## [0.3.1] - 2026-07-24
 

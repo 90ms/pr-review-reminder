@@ -47,7 +47,10 @@ directory를 비밀번호처럼 취급하고 자동화 전용 NAS 사용자만 �
 Synology 커널에서 Codex의 bwrap/Landlock 샌드박스가 동작하지 않기 때문에 Runner는
 `CODEX_RUNNER_MODE=outer-container`를 명시한 경우에만 컨테이너를 외부 실행 경계로
 사용한다. `privileged`, `SYS_ADMIN`, Docker socket, `seccomp=unconfined`은 사용하지
-않는다. 더 강한 격리가 필요하면 Runner를 user namespace 지원 Linux VM으로 옮긴다.
+않는다. Synology 모델에 따라 cgroup PID·CPU·메모리 제한도 지원되지 않으므로 기본
+Compose는 이를 강제하지 않고 단일 작업과 명령 timeout으로 실행량을 제한한다. 더
+강한 격리와 자원 제한이 필요하면 Runner를 user namespace와 cgroup을 지원하는 Linux
+VM으로 옮긴다.
 
 ## 1. Slack App 만들기
 
@@ -354,6 +357,14 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
   proxy가 허용한다. GitHub나 package registry 연결 실패는 정상적인 제한이다.
 - Codex 서비스의 공식 endpoint가 바뀐 경우 임의로 전체 인터넷을 허용하지 말고
   `proxy/squid.conf`의 allowlist와 변경 근거를 함께 검토한다.
+
+### 컨테이너 생성 시 CPU CFS 또는 PIDs limit 오류가 남
+
+- 최신 `main`을 pull하고 이미지를 다시 만들었는지 확인한다.
+- 기본 Compose는 Synology에서 지원되지 않는 `cpus`, `pids_limit`, `mem_limit`을
+  지정하지 않는다. 로컬 override 파일에 해당 제한을 추가했다면 제거한다.
+- 이 제한을 사용할 수 없는 것은 경고 대상이지만 Runner의 read-only root,
+  capability 제거, 내부 network와 allowlist proxy는 계속 적용된다.
 
 ### macOS 테스트를 NAS에서 실행할 수 없음
 

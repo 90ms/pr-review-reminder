@@ -128,8 +128,10 @@ Runner에는 다음 제한을 모두 적용한다.
 
 - GitHub·Slack 환경 변수, `gh` CLI, Docker socket과 NAS 공유 폴더를 제공하지 않는다.
 - 승인된 workspace, 파일 큐와 Codex 로그인 디렉터리만 mount한다.
-- read-only root filesystem, 모든 capability 제거, `no-new-privileges`, PID·CPU·메모리
-  제한을 적용한다.
+- read-only root filesystem, 모든 capability 제거와 `no-new-privileges`를 적용한다.
+- 동시 작업을 하나로 제한하고 각 명령에 timeout을 적용한다. 일부 Synology 커널은
+  cgroup PID·CPU·메모리 제한을 지원하지 않으므로 기본 Compose에서 해당 필드를
+  강제하지 않는다.
 - 외부 통신은 OpenAI/ChatGPT allowlist proxy만 통과한다.
 - Controller는 Codex와 GitHub 인증 값을 생성 결과에서 다시 찾아 유출이 의심되면
   push하지 않는다.

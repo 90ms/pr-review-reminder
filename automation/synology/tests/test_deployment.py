@@ -32,6 +32,11 @@ class ComposeConfigurationTests(unittest.TestCase):
         self.assertNotIn("SYS_ADMIN", self.contents)
         self.assertNotIn("seccomp=unconfined", self.contents)
 
+    def test_default_compose_avoids_unsupported_synology_cgroup_limits(self) -> None:
+        self.assertNotIn("pids_limit:", self.contents)
+        self.assertNotIn("mem_limit:", self.contents)
+        self.assertNotIn("cpus:", self.contents)
+
     def test_runner_uses_internal_network_and_allowlisted_proxy(self) -> None:
         proxy_path = Path(__file__).resolve().parents[1] / "proxy" / "squid.conf"
         proxy = proxy_path.read_text(encoding="utf-8")

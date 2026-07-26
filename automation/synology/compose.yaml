@@ -62,9 +62,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 256
-    mem_limit: 4g
-    cpus: 2.0
     depends_on:
       - codex-egress
     networks:
@@ -84,8 +81,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 64
-    mem_limit: 256m
     networks:
       - runner
       - egress
