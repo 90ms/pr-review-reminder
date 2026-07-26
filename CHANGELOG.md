@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite leases, protected-path checks, timeout recovery, CI result
   notifications, dry-run mode, Docker Compose deployment, and NAS setup
   documentation for the issue worker.
+- A versioned file-queue protocol and separate Codex Runner image with an
+  internal network, an OpenAI/ChatGPT allowlisted egress proxy, and heartbeat
+  health checks.
 
 ### Fixed
 
@@ -25,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Debian's outdated community package.
 - The container now overrides the host-side `GH_CONFIG_DIR` mount source with
   its in-container path so `gh` can find the persisted login.
+- Failed and blocked issue jobs now both retain a Slack retry action.
+- Controller-side validation restores trusted Git configuration and rejects
+  protected paths, changed symlinks, invalid ancestry, and generated credential
+  material before pushing a branch.
 
 ## [0.3.1] - 2026-07-24
 

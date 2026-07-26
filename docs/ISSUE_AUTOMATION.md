@@ -11,11 +11,11 @@
 1. NAS 스케줄러 또는 수동 명령이 `codex-ready` 이슈를 찾는다.
 2. Slack 채널에 이슈 요약과 **구현 시작** 버튼을 보낸다.
 3. 허용된 Slack 사용자가 버튼을 누르면 이슈를 다시 검증하고 작업을 예약한다.
-4. 워커가 시작 알림을 Slack에 보내고 최신 `main`을 별도 작업 디렉터리에 준비해
-   Codex CLI를 실행한다.
-5. Codex가 구현, 테스트, 관련 문서 갱신과 커밋을 수행한다.
-6. 워커가 브랜치를 푸시하고 Draft PR을 만든다. 완료·실패·차단 결과는 원본 승인
-   메시지의 브로드캐스트 답글로 알린다.
+4. Controller가 시작 알림을 Slack에 보내고 최신 `main`을 별도 작업 디렉터리에
+   준비해 승인된 작업을 파일 queue에 넣는다.
+5. 격리 Runner의 Codex가 구현, 테스트, 관련 문서 갱신과 커밋을 수행한다.
+6. Controller가 결과와 저장소 경계를 검증하고 브랜치를 푸시해 Draft PR을 만든다.
+   완료·실패·차단 결과는 원본 승인 메시지의 브로드캐스트 답글로 알린다.
 7. GitHub Actions 결과도 같은 Slack 스레드와 원본 상태 메시지에 반영한다.
 
 자동 병합, 자동 릴리스, GitHub review·approval 게시, 승인되지 않은 이슈 실행은
@@ -25,16 +25,15 @@
 ## 구성 요소
 
 ```text
-Synology Task Scheduler ── scan ──┐
-                                 v
-GitHub Issues <──── labels ── Automation Service ── Socket Mode ── Slack
-                                 │
-                                 v
-                         isolated workspace
-                         gh + codex CLIs
-                                 │
-                                 v
-                    branch + Draft PR + macOS CI
+Synology Task Scheduler ── scan ──> Controller <── Socket Mode ──> Slack
+                                       │  ▲
+                  GitHub Issues/PR <── gh  │ result
+                                       │  │
+                              file queue  │
+                                       v  │
+                                  Codex Runner ──> allowlist proxy
+                                       │
+                              isolated workspace
 ```
 
 - **Controller**: 이슈 검색, Slack 상호작용, workspace 준비, 작업 큐, 결과 검증,

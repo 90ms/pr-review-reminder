@@ -14,9 +14,13 @@ approval과 릴리스는 자동화하지 않는다. 설계와 상태 전이는
 - NAS에서 완료한 Codex CLI 로그인
 - Slack App을 설치할 수 있는 workspace 권한
 
-컨테이너는 `linux/amd64` 또는 `linux/arm64`에서 Python, Node, GitHub CLI와 Codex
-CLI 패키지가 제공되는 환경을 전제로 한다. Synology 모델의 CPU와 Container Manager
-지원 여부를 먼저 확인한다.
+Compose는 Controller, Codex Runner와 egress proxy의 세 서비스를 만든다. 이미
+단일 컨테이너 구성을 운영 중이라면 인증을 다시 만들거나 기존 데이터를 삭제할
+필요가 없다. 아래 **기존 설치 전환** 절차로 이미지와 Compose 구성만 갱신한다.
+
+컨테이너는 `linux/amd64` 또는 `linux/arm64`에서 Python, Node, GitHub CLI, Codex
+CLI와 Squid 패키지가 제공되는 환경을 전제로 한다. Synology 모델의 CPU와 Container
+Manager 지원 여부를 먼저 확인한다.
 
 ## 보안 전제
 
@@ -34,8 +38,16 @@ runner에 인증을 전달하지 않고 개인 NAS의 격리 컨테이너에서 
 - 첫 실행과 정책 변경 후에는 `DRY_RUN=true`로 확인한다.
 - 자동 생성 PR은 Draft로 유지하고 macOS CI와 diff를 사람이 검토한다.
 
-Codex 인증 저장소는 세션 갱신 때문에 쓰기 가능한 mount다. 비밀번호처럼 취급하고
-자동화 전용 NAS 사용자만 읽을 수 있게 한다. `gh` 설정은 읽기 전용으로 mount한다.
+Codex 인증 저장소는 Runner에만 세션 갱신용 쓰기 가능 mount로 제공한다. Controller는
+유출 검사 목적으로만 이를 읽고, GitHub·Slack 인증은 Runner에 전달하지 않는다.
+Runner는 OpenAI/ChatGPT allowlist proxy 외에는 외부로 연결할 수 없다. Codex 인증
+directory를 비밀번호처럼 취급하고 자동화 전용 NAS 사용자만 읽을 수 있게 한다.
+`gh` 설정은 Controller에만 읽기 전용으로 mount한다.
+
+Synology 커널에서 Codex의 bwrap/Landlock 샌드박스가 동작하지 않기 때문에 Runner는
+`CODEX_RUNNER_MODE=outer-container`를 명시한 경우에만 컨테이너를 외부 실행 경계로
+사용한다. `privileged`, `SYS_ADMIN`, Docker socket, `seccomp=unconfined`은 사용하지
+않는다. 더 강한 격리가 필요하면 Runner를 user namespace 지원 Linux VM으로 옮긴다.
 
 ## 1. Slack App 만들기
 
@@ -97,7 +109,7 @@ docker run --rm -it \
   -e CODEX_HOME=/home/worker/.codex \
   -v /volume1/homes/automation/.codex:/home/worker/.codex \
   --entrypoint codex \
-  pr-review-issue-worker:local \
+  pr-review-codex-runner:local \
   login --device-auth
 ```
 
@@ -120,7 +132,10 @@ docker run --rm -it \
 ```bash
 cd /volume1/docker/pr-review-reminder/automation/synology
 chmod 600 .env
-mkdir -p /volume1/docker/pr-review-issue-worker/data
+sudo mkdir -p \
+  /volume1/docker/pr-review-issue-worker/data/runner-queue \
+  /volume1/docker/pr-review-issue-worker/data/workspaces
+sudo chown -R 1026:100 /volume1/docker/pr-review-issue-worker/data
 ```
 
 `.env`에서 다음은 반드시 실제 값으로 변경한다.
@@ -134,10 +149,12 @@ SLACK_APP_TOKEN=xapp-...
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_CHANNEL_ID=C...
 SLACK_ALLOWED_USER_IDS=U...
+CODEX_RUNNER_MODE=outer-container
 ```
 
-Synology 사용자 UID/GID는 `id automation`으로 확인한다. 초기
-`DRY_RUN=true`는 유지한다.
+`1026:100`은 예시다. Synology 사용자 UID/GID는 `id automation` 또는 실제 자동화
+사용자의 `id`로 확인하고 directory 소유권과 `.env`의 `PUID`/`PGID`를 같은 값으로
+맞춘다. 초기 `DRY_RUN=true`는 유지한다.
 
 ## 4. GitHub 라벨 만들기
 
@@ -152,15 +169,21 @@ docker compose run --rm \
 ## 5. 빌드와 진단
 
 ```bash
-docker compose build
+docker compose build --pull
+docker compose up -d codex-egress codex-runner
+docker compose exec -T codex-runner pr-issue-worker runner-doctor
 docker compose run --rm issue-worker doctor
+docker compose up -d issue-worker
+docker compose ps
 ```
 
-진단은 Git, `gh`, Codex CLI와 데이터 경로를 확인한다. 인증 오류가 나면 mount 경로,
-PUID/GID와 Compose 컨테이너의 `gh auth status`를 확인한다.
+Runner 진단은 Codex 로그인, Git, queue/workspace mount와 외부 실행 경계를 확인한다.
+Controller 진단은 GitHub 로그인, Git, 데이터 경로와 Runner heartbeat를 확인한다.
+인증 오류가 나면 mount 경로, PUID/GID와 각 컨테이너의 로그인 상태를 확인한다.
 
 ```bash
-docker compose run --rm --entrypoint gh issue-worker auth status
+docker compose exec -T issue-worker gh auth status
+docker compose exec -T codex-runner codex login status
 ```
 
 ## 6. Dry run
@@ -169,12 +192,14 @@ docker compose run --rm --entrypoint gh issue-worker auth status
 
 ```bash
 docker compose up -d
-docker compose logs -f issue-worker
+docker compose logs -f issue-worker codex-runner codex-egress
 ```
 
 Slack의 **구현 시작**을 누르면 Codex가 격리 clone에서 작업하지만 `DRY_RUN=true`인
 동안 GitHub branch push와 Draft PR 생성은 수행하지 않는다. 실패 작업 디렉터리는
-`DATA_DIR/workspaces`에 남아 diff와 결과를 확인할 수 있다.
+`DATA_DIR/workspaces`에 남아 diff와 결과를 확인할 수 있다. Controller가 이슈
+snapshot과 승인된 base SHA를 파일 queue로 전달하며 Runner는 GitHub에 직접
+접근하거나 branch를 push하지 않는다.
 
 버튼 승인 후에는 원본 메시지가 현재 상태로 갱신되고, 구현 시작·완료·실패·차단과
 CI 결과가 같은 메시지의 브로드캐스트 스레드 답글로 전송된다. 승인자는 멘션을 통해
@@ -218,8 +243,54 @@ cd /volume1/docker/pr-review-reminder/automation/synology
 docker compose exec -T issue-worker pr-issue-worker notify
 ```
 
-버튼 상호작용을 받으려면 `issue-worker` 서비스 자체는 항상 실행 중이어야 한다.
-SQLite와 `codex-notified` 라벨이 수동·예약 스캔의 중복 메시지를 막는다.
+버튼 상호작용을 받으려면 `issue-worker`가, 승인된 구현을 소비하려면
+`codex-runner`와 `codex-egress`가 항상 실행 중이어야 한다. SQLite와
+`codex-notified` 라벨이 수동·예약 스캔의 중복 메시지를 막는다.
+
+## 기존 설치 전환
+
+기존 단일 컨테이너 설치의 `.env`, GitHub/Codex 로그인과 SQLite 상태는 그대로
+사용한다. 실행 중인 작업이 없는 시점에 서비스를 중지하고 설정과 상태를 백업한다.
+아래 경로와 `1026:100`은 실제 `.env` 값에 맞게 바꾼다.
+
+```bash
+cd /volume1/docker/pr-review-reminder/automation/synology
+docker compose down
+cp .env /volume1/docker/pr-review-issue-worker/env.backup
+cp /volume1/docker/pr-review-issue-worker/data/state.sqlite3 \
+  /volume1/docker/pr-review-issue-worker/state.sqlite3.backup
+
+git pull --ff-only
+sudo mkdir -p \
+  /volume1/docker/pr-review-issue-worker/data/runner-queue \
+  /volume1/docker/pr-review-issue-worker/data/workspaces
+sudo chown -R 1026:100 /volume1/docker/pr-review-issue-worker/data
+```
+
+기존 `.env`에 아래 값이 없으면 추가한다. `DATA_DIR`, PUID와 PGID를 비롯한 나머지
+값은 기존 설정을 계속 사용한다.
+
+```dotenv
+RUNNER_HEARTBEAT_MAX_AGE_SECONDS=30
+RUNNER_POLL_SECONDS=1
+CODEX_RUNNER_MODE=outer-container
+```
+
+새 이미지를 빌드하고 Runner부터 진단한 뒤 Controller를 시작한다.
+
+```bash
+docker compose build --pull
+docker compose up -d codex-egress codex-runner
+docker compose exec -T codex-runner pr-issue-worker runner-doctor
+docker compose run --rm issue-worker doctor
+docker compose up -d issue-worker
+docker compose ps
+docker compose logs --tail=100 issue-worker codex-runner codex-egress
+```
+
+새 로그인은 필요 없다. `gh`와 Codex 인증 경로가 기존 `.env`와 일치하면 각 서비스가
+같은 인증 directory를 역할에 맞는 권한으로 mount한다. 이전에 `codex-blocked`가 된
+이슈는 Slack 원본 메시지의 **재시도**를 누르면 새 Runner로 다시 실행된다.
 
 ## 업데이트와 백업
 
@@ -227,10 +298,13 @@ SQLite와 `codex-notified` 라벨이 수동·예약 스캔의 중복 메시지�
 git pull --ff-only
 docker compose build --pull
 docker compose up -d --force-recreate
+docker compose exec -T codex-runner pr-issue-worker runner-doctor
+docker compose run --rm issue-worker doctor
 ```
 
 백업 대상은 `.env`, Codex/gh 인증 directory와 `DATA_DIR/state.sqlite3`다. 실행 중인
 SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapshot을 사용한다.
+`DATA_DIR/runner-queue`는 실행 중 작업이 없을 때 비어 있어야 한다.
 `DATA_DIR/workspaces`는 실패 분석이 필요하지 않으면 백업하지 않아도 된다.
 
 ## 문제 해결
@@ -262,10 +336,24 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
 ### 작업이 계속 `codex-running`임
 
 - `JOB_TIMEOUT_SECONDS`와 로그를 확인한다.
+- `docker compose ps`에서 `codex-runner`와 `codex-egress`가 실행 중인지 확인한다.
+- `docker compose exec -T codex-runner pr-issue-worker runner-doctor`로 로그인과
+  mount를 확인한다.
+- Controller 로그에 heartbeat 오류가 있으면 queue 경로의 소유권과 두 서비스의
+  `RUNNER_QUEUE_PATH` mount가 같은 host directory를 가리키는지 확인한다.
 - `LEASE_SECONDS`는 `JOB_TIMEOUT_SECONDS`보다 길어야 하며 시작 시 검증된다.
 - 프로세스를 강제 종료한 경우 lease가 만료되면 다음 스캔이 이슈를
   `codex-failed`로 전환하고 기존 메시지에 **재시도** 버튼을 복구한다.
 - 재시도 전에 상태 DB와 남은 workspace의 로그와 diff를 확인한다.
+
+### Runner가 OpenAI에 연결하지 못함
+
+- `docker compose logs codex-egress codex-runner`에서 proxy 거부와 TLS 오류를
+  확인한다.
+- Runner에는 일반 인터넷 route가 없으며 `*.openai.com`, `*.chatgpt.com`의 HTTPS만
+  proxy가 허용한다. GitHub나 package registry 연결 실패는 정상적인 제한이다.
+- Codex 서비스의 공식 endpoint가 바뀐 경우 임의로 전체 인터넷을 허용하지 말고
+  `proxy/squid.conf`의 allowlist와 변경 근거를 함께 검토한다.
 
 ### macOS 테스트를 NAS에서 실행할 수 없음
 

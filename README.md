@@ -193,15 +193,18 @@ OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.3.1 BUILD_NUMBER=31 \
 
 유지보수자는 앱과 별도로 Synology NAS에서 승인 기반 이슈 워커를 운영할 수 있습니다.
 `codex-ready` 이슈를 Slack에 알리고, 허용된 사용자가 **구현 시작**을 누른 경우에만
-NAS의 Codex CLI가 최신 `main`에서 구현·테스트·문서 갱신을 수행해 Draft PR을
-생성합니다.
+NAS의 격리 Runner가 최신 `main`에서 구현·테스트·문서 갱신을 수행하고, 별도
+Controller가 결과를 검증해 Draft PR을 생성합니다.
 
 ```text
-codex-ready issue → Slack 승인 → 격리된 Codex 작업 → Draft PR → macOS CI 알림
+codex-ready issue → Slack 승인 → Controller queue → 격리 Codex Runner
+                    → Controller 검증·Draft PR → macOS CI 알림
 ```
 
 자동 병합·review·approval·릴리스는 수행하지 않습니다. 실제 토큰과 CLI 인증은 NAS에만
-두며 공개 저장소에는 Docker/Compose 예제와 스킬, 테스트만 포함합니다. 설치 전에는
+두며 공개 저장소에는 Docker/Compose 예제와 스킬, 테스트만 포함합니다. Runner에는
+GitHub·Slack 인증을 전달하지 않고 OpenAI/ChatGPT allowlist proxy만 허용합니다.
+기존 단일 컨테이너 설치는 인증과 상태를 유지한 채 전환할 수 있습니다. 설치 전에는
 [운영 계약](docs/ISSUE_AUTOMATION.md)과
 [Synology 설정 가이드](docs/SYNOLOGY_AUTOMATION.md)의 공개 이슈 및 Codex 인증
 주의사항을 확인하세요.
