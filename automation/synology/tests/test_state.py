@@ -35,6 +35,18 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(state.attempts, 2)
         self.assertIsNone(state.last_error)
 
+    def test_blocked_job_can_be_claimed_again(self) -> None:
+        self.assertTrue(self.store.claim(16, "U123", 300))
+        self.store.finish(16, "blocked", error="Runner is unavailable")
+
+        self.assertTrue(self.store.claim(16, "U456", 300))
+
+        state = self.store.get(16)
+        self.assertEqual(state.status, "running")
+        self.assertEqual(state.approved_by, "U456")
+        self.assertEqual(state.attempts, 2)
+        self.assertIsNone(state.last_error)
+
     def test_open_pr_is_terminal(self) -> None:
         self.assertTrue(self.store.claim(14, "U123", 300))
         self.store.finish(

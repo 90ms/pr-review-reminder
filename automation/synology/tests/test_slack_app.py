@@ -227,6 +227,25 @@ class SlackAutomationTests(unittest.TestCase):
         ]
         self.assertEqual(actions[0]["elements"][0]["text"]["text"], "재시도")
 
+    def test_job_broadcasts_blocked_status_with_retry_button(self) -> None:
+        self._claim_issue()
+        self.worker.result = JobResult(
+            JobStatus.BLOCKED,
+            self.issue.number,
+            "Runner heartbeat is stale",
+        )
+
+        self.automation._run_job(self.issue, "U123")
+
+        self.assertIn("차단", self.client.posts[-1]["text"])
+        self.assertIn("재시도", self.client.posts[-1]["text"])
+        actions = [
+            block
+            for block in self.client.updates[-1]["blocks"]
+            if block["type"] == "actions"
+        ]
+        self.assertEqual(actions[0]["elements"][0]["text"]["text"], "재시도")
+
     def test_unexpected_worker_error_is_recorded_and_notified(self) -> None:
         self._claim_issue()
         self.worker.error = RuntimeError("unexpected failure")

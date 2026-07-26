@@ -100,8 +100,9 @@ codex-ready
 ```
 
 `codex-ready`는 관리자가 제거할 때까지 원래의 승인 표식으로 유지한다. 실행 상태
-라벨은 서로 배타적으로 관리한다. `codex-failed` 이슈는 Slack의 **재시도** 버튼으로
-다시 승인해야 하며 자동으로 재실행하지 않는다.
+라벨은 서로 배타적으로 관리한다. `codex-failed`와 `codex-blocked` 이슈는 원인을
+확인하고 조치한 뒤 Slack의 **재시도** 버튼으로 다시 승인해야 하며 자동으로
+재실행하지 않는다.
 
 ## 승인과 권한 경계
 
@@ -215,8 +216,9 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 
 - 스캔 실패: 상태를 변경하지 않고 다음 주기에 재시도한다.
 - Slack 전송 실패: `codex-notified`를 붙이지 않는다.
-- Codex 실패/timeout: `codex-failed`로 전환하고 수동 재시도를 기다린다.
-- 보호 경로 또는 불명확한 요구: `codex-blocked`로 전환한다.
+- Codex 실패/timeout: `codex-failed`로 전환하고 Slack 재시도를 기다린다.
+- 보호 경로 또는 불명확한 요구: `codex-blocked`로 전환하고 원인과 재시도 버튼을
+  표시한다.
 - push/PR 실패: 로컬 결과를 보존하고 `codex-failed`로 전환한다.
 - CI 실패: PR은 유지하며 Slack에 실패한 check 링크를 알린다.
 - 구현 시작, 완료와 실패·차단은 승인자에게 멘션되는 Slack 브로드캐스트 답글로
@@ -227,7 +229,7 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 
 - `$implement-github-issue` 저장소 스킬과 구조화 완료 보고
 - 설정, GitHub CLI gateway, SQLite lease와 단일 작업 큐
-- Slack Socket Mode 알림, 허용 사용자 승인, 실행 생명주기 알림과 실패 재시도
+- Slack Socket Mode 알림, 허용 사용자 승인, 실행 생명주기 알림과 실패·차단 재시도
 - 격리 clone, Codex timeout, 보호 경로 검사, branch push와 Draft PR
 - GitHub check 감시와 Slack 결과 갱신
 - 만료 lease 복구와 중복 알림·중복 실행 방지

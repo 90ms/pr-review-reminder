@@ -259,7 +259,7 @@ class SlackAutomation:
         self._update_message(
             issue,
             _escape_message(result.summary),
-            include_button=result.status is JobStatus.FAILED,
+            include_button=result.status in {JobStatus.FAILED, JobStatus.BLOCKED},
             button_text="재시도",
         )
         if result.status is JobStatus.FAILED:
@@ -271,8 +271,8 @@ class SlackAutomation:
         else:
             self._post_lifecycle_notification(
                 issue,
-                f"⚠️ <@{approved_by}> · Issue #{issue.number} 구현이 중단되었습니다. "
-                "원본 메시지에서 필요한 조치를 확인하세요.",
+                f"⚠️ <@{approved_by}> · Issue #{issue.number} 구현이 차단되었습니다. "
+                "원본 메시지에서 원인을 확인하고 조치한 뒤 재시도하세요.",
             )
 
     def _monitor_checks(self, issue: Issue, result: JobResult) -> None:
