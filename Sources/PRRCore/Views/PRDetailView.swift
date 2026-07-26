@@ -150,7 +150,15 @@ public struct PRDetailView: View {
                 Button { app.startReview(item.id) } label: { Label(app.l("retry"), systemImage: "arrow.clockwise") }
             }
         case .done:
-            EmptyView()
+            HStack {
+                Text(app.l("review_completed")).font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    app.startReReview(item.id)
+                } label: {
+                    Label(app.l("review_again"), systemImage: "arrow.clockwise")
+                }
+            }
         }
     }
 

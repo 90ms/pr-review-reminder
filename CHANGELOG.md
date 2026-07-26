@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Completed PR reviews now expose a direct "Review again" action that fetches
+  the current PR head and diff before running a fresh analysis.
+- Settings are grouped into General, Review, Automation, and Data tabs.
 - A repository-local `$implement-github-issue` skill for implementing an
   explicitly approved issue with tests, documentation, and reviewable commits.
 - An optional Synology worker that scans labeled issues, requests approval with

@@ -588,6 +588,19 @@ public final class AppState: ObservableObject {
         reviewTasks[itemID] = task
     }
 
+    /// Starts a fresh review for a PR that already has an analysis.
+    /// Existing details are discarded so the new run fetches the current head and diff.
+    public func startReReview(_ itemID: String, notifyOnComplete: Bool = true) {
+        guard reviewTasks[itemID] == nil else { return }
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+        items[index].analysis = nil
+        items[index].usage = nil
+        items[index].details = nil
+        items[index].detailsState = .idle
+        items[index].state = .idle
+        startReview(itemID, notifyOnComplete: notifyOnComplete)
+    }
+
     public func cancelReview(_ itemID: String) {
         reviewTasks[itemID]?.cancel()
     }

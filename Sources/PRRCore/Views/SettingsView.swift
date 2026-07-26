@@ -18,200 +18,20 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        Form {
-            Section(app.l("sec_lang")) {
-                Picker(app.l("app_language"), selection: $app.settings.appLanguage) {
-                    ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
-                }
-                Picker(app.l("review_language"), selection: $app.settings.reviewLanguage) {
-                    ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
-                }
+        VStack(spacing: 0) {
+            TabView {
+                Form { generalSettings }
+                    .tabItem { Label(app.l("settings_tab_general"), systemImage: "gearshape") }
+                Form { reviewSettings }
+                    .tabItem { Label(app.l("settings_tab_review"), systemImage: "sparkles") }
+                Form { automationSettings }
+                    .tabItem { Label(app.l("settings_tab_automation"), systemImage: "clock.arrow.circlepath") }
+                Form { dataSettings }
+                    .tabItem { Label(app.l("settings_tab_data"), systemImage: "externaldrive") }
             }
+            .formStyle(.grouped)
 
-            Section(app.l("sec_github")) {
-                TextField(app.l("owner"), text: $app.settings.owner)
-                TextField(app.l("repos_ph"), text: $reposText)
-                    .onAppear { reposText = app.settings.repositories.joined(separator: ", ") }
-            }
-
-            Section(app.l("sec_ai")) {
-                Picker(app.l("tool"), selection: $app.settings.aiTool) {
-                    ForEach(AITool.allCases) { Text($0.displayName).tag($0) }
-                }.pickerStyle(.segmented)
-                if app.settings.aiTool == .codex {
-                    TextField(app.l("codex_input_price"), value: $app.settings.codexInputPricePerMillion, format: .number)
-                    TextField(app.l("codex_output_price"), value: $app.settings.codexOutputPricePerMillion, format: .number)
-                    Text(app.l("codex_price_help"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section(app.l("sec_budget")) {
-                TextField(app.l("token_budget"), value: $app.settings.reviewTokenBudget, format: .number)
-                Stepper(
-                    String(format: app.l("budget_window_days"), app.settings.reviewBudgetWindowDays),
-                    value: $app.settings.reviewBudgetWindowDays,
-                    in: 1...365
-                )
-                Text(app.l("budget_help"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section(app.l("sec_schedule")) {
-                Picker(app.l("mode"), selection: $app.settings.scheduleMode) {
-                    Text(app.l("daily_at")).tag(ScheduleMode.dailyAt)
-                    Text(app.l("every_n")).tag(ScheduleMode.everyNHours)
-                }.pickerStyle(.segmented)
-                if app.settings.scheduleMode == .dailyAt {
-                    HStack {
-                        Stepper("\(app.l("hour")): \(app.settings.dailyHour)", value: $app.settings.dailyHour, in: 0...23)
-                        Stepper("\(app.l("minute")): \(app.settings.dailyMinute)", value: $app.settings.dailyMinute, in: 0...59)
-                    }
-                } else {
-                    Stepper(String(format: app.l("every_h"), app.settings.intervalHours), value: $app.settings.intervalHours, in: 1...24)
-                }
-                if !app.scheduleRuns.isEmpty {
-                    Text(app.l("recent_schedule_runs"))
-                        .font(.caption.weight(.semibold))
-                        .padding(.top, 4)
-                    ForEach(app.scheduleRuns.prefix(5)) { run in
-                        HStack(alignment: .top) {
-                            Image(systemName: run.outcome == .success
-                                ? "checkmark.circle.fill"
-                                : "exclamationmark.triangle.fill")
-                                .foregroundStyle(run.outcome == .success ? .green : .orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(run.date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                Text(scheduleRunMessage(run))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Section {
-                Toggle(app.l("enable_notifications"), isOn: $app.settings.notificationsEnabled)
-                Toggle(app.l("auto_review"), isOn: $app.settings.autoReview)
-                Toggle(app.l("launch_at_login"), isOn: $app.settings.launchAtLogin)
-                if let error = app.launchAtLoginError {
-                    Text(String(format: app.l("launch_at_login_failed"), error))
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
-                }
-            }
-
-            Section(app.l("sec_history")) {
-                Toggle(app.l("save_history"), isOn: $app.settings.historyEnabled)
-                if app.settings.historyEnabled {
-                    Stepper(
-                        app.settings.historyRetentionDays == 0
-                            ? app.l("retention_forever")
-                            : String(format: app.l("retention_days"), app.settings.historyRetentionDays),
-                        value: $app.settings.historyRetentionDays,
-                        in: 0...365
-                    )
-                    Text(app.l("history_privacy_help"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section(app.l("sec_prompt")) {
-                TextEditor(text: $app.settings.promptTemplate)
-                    .font(.caption.monospaced()).frame(minHeight: 100)
-                Text(app.l("prompt_help")).font(.caption2).foregroundStyle(.secondary)
-            }
-
-            Section(app.l("sec_skill")) {
-                TextEditor(text: $app.settings.reviewSkill)
-                    .font(.caption.monospaced()).frame(minHeight: 80)
-                Text(app.l("skill_help")).font(.caption2).foregroundStyle(.secondary)
-                HStack {
-                    Button(app.l("load_file")) { showingImporter = true }
-                    if !app.settings.reviewSkill.isEmpty {
-                        Button(app.l("clear")) { app.settings.reviewSkill = "" }
-                    }
-                }
-            }
-
-            Section(app.l("sec_deps")) {
-                dependencyRows
-                Button(app.l("recheck")) { Task { await app.diagnose() } }
-            }
-
-            Section(app.l("sec_update")) {
-                if let info = app.updateInfo {
-                    LabeledContent(app.l("current_version"), value: info.currentVersion)
-                    LabeledContent(app.l("latest_version"), value: info.latestVersion)
-                    if info.updateAvailable {
-                        Button(app.l("install_update")) {
-                            app.startUpdateInstall()
-                        }
-                        .disabled(app.updateStage.isBusy)
-                    } else {
-                        Label(app.l("up_to_date"), systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                }
-                Button(app.l("check_update")) {
-                    app.startUpdateCheck()
-                }
-                .disabled(app.updateStage.isBusy)
-                if app.updateStage.isBusy {
-                    HStack {
-                        ProgressView().controlSize(.small)
-                        Text(updateStageLabel)
-                        Spacer()
-                        if app.updateStage != .restarting && app.updateStage != .cancelling {
-                            Button(app.l("cancel")) { app.cancelUpdate() }
-                        }
-                    }
-                }
-                if case let .failed(operation, message) = app.updateStage {
-                    Text(operation.map(updateFailureLabel) ?? app.l("update_failed"))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    if operation == .restartApplication {
-                        Button(app.l("restart_now")) {
-                            Task { await app.restartAfterUpdate() }
-                        }
-                    }
-                } else if app.updateStage == .restartRequired {
-                    Text(app.l("update_restart"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button(app.l("restart_now")) {
-                        Task { await app.restartAfterUpdate() }
-                    }
-                } else if app.updateStage == .cancelled {
-                    Text(app.l("update_cancelled"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section(app.l("sec_storage")) {
-                storageRow(
-                    title: app.l("settings_storage"),
-                    diagnostic: app.settingsStorageDiagnostic
-                )
-                storageRow(
-                    title: app.l("history_storage"),
-                    diagnostic: app.historyStorageDiagnostic
-                )
-            }
-
+            Divider()
             HStack {
                 Spacer()
                 Button(app.l("save")) {
@@ -223,9 +43,9 @@ public struct SettingsView: View {
                     }
                 }.keyboardShortcut(.defaultAction)
             }
+            .padding()
         }
-        .formStyle(.grouped)
-        .frame(width: 480, height: 720)
+        .frame(width: 560, height: 640)
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.plainText, .text, UTType(filenameExtension: "md") ?? .plainText]) { result in
             if case .success(let url) = result,
                url.startAccessingSecurityScopedResource() {
@@ -234,6 +54,211 @@ public struct SettingsView: View {
                     app.settings.reviewSkill = text
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var generalSettings: some View {
+        Section(app.l("sec_lang")) {
+            Picker(app.l("app_language"), selection: $app.settings.appLanguage) {
+                ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
+            }
+            Picker(app.l("review_language"), selection: $app.settings.reviewLanguage) {
+                ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
+            }
+        }
+
+        Section(app.l("sec_github")) {
+            TextField(app.l("owner"), text: $app.settings.owner)
+            TextField(app.l("repos_ph"), text: $reposText)
+                .onAppear { reposText = app.settings.repositories.joined(separator: ", ") }
+        }
+
+        Section(app.l("sec_deps")) {
+            dependencyRows
+            Button(app.l("recheck")) { Task { await app.diagnose() } }
+        }
+    }
+
+    @ViewBuilder private var reviewSettings: some View {
+        Section(app.l("sec_ai")) {
+            Picker(app.l("tool"), selection: $app.settings.aiTool) {
+                ForEach(AITool.allCases) { Text($0.displayName).tag($0) }
+            }.pickerStyle(.segmented)
+            if app.settings.aiTool == .codex {
+                TextField(app.l("codex_input_price"), value: $app.settings.codexInputPricePerMillion, format: .number)
+                TextField(app.l("codex_output_price"), value: $app.settings.codexOutputPricePerMillion, format: .number)
+                Text(app.l("codex_price_help"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        Section(app.l("sec_budget")) {
+            TextField(app.l("token_budget"), value: $app.settings.reviewTokenBudget, format: .number)
+            Stepper(
+                String(format: app.l("budget_window_days"), app.settings.reviewBudgetWindowDays),
+                value: $app.settings.reviewBudgetWindowDays,
+                in: 1...365
+            )
+            Text(app.l("budget_help"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+
+        Section(app.l("sec_prompt")) {
+            TextEditor(text: $app.settings.promptTemplate)
+                .font(.caption.monospaced()).frame(minHeight: 120)
+            Text(app.l("prompt_help")).font(.caption2).foregroundStyle(.secondary)
+        }
+
+        Section(app.l("sec_skill")) {
+            TextEditor(text: $app.settings.reviewSkill)
+                .font(.caption.monospaced()).frame(minHeight: 90)
+            Text(app.l("skill_help")).font(.caption2).foregroundStyle(.secondary)
+            HStack {
+                Button(app.l("load_file")) { showingImporter = true }
+                if !app.settings.reviewSkill.isEmpty {
+                    Button(app.l("clear")) { app.settings.reviewSkill = "" }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var automationSettings: some View {
+        Section(app.l("sec_schedule")) {
+            Picker(app.l("mode"), selection: $app.settings.scheduleMode) {
+                Text(app.l("daily_at")).tag(ScheduleMode.dailyAt)
+                Text(app.l("every_n")).tag(ScheduleMode.everyNHours)
+            }.pickerStyle(.segmented)
+            if app.settings.scheduleMode == .dailyAt {
+                HStack {
+                    Stepper("\(app.l("hour")): \(app.settings.dailyHour)", value: $app.settings.dailyHour, in: 0...23)
+                    Stepper("\(app.l("minute")): \(app.settings.dailyMinute)", value: $app.settings.dailyMinute, in: 0...59)
+                }
+            } else {
+                Stepper(String(format: app.l("every_h"), app.settings.intervalHours), value: $app.settings.intervalHours, in: 1...24)
+            }
+            if !app.scheduleRuns.isEmpty {
+                Text(app.l("recent_schedule_runs"))
+                    .font(.caption.weight(.semibold))
+                    .padding(.top, 4)
+                ForEach(app.scheduleRuns.prefix(5)) { run in
+                    HStack(alignment: .top) {
+                        Image(systemName: run.outcome == .success
+                            ? "checkmark.circle.fill"
+                            : "exclamationmark.triangle.fill")
+                            .foregroundStyle(run.outcome == .success ? .green : .orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(run.date.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption)
+                            Text(scheduleRunMessage(run))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+        }
+
+        Section {
+            Toggle(app.l("enable_notifications"), isOn: $app.settings.notificationsEnabled)
+            Toggle(app.l("auto_review"), isOn: $app.settings.autoReview)
+            Toggle(app.l("launch_at_login"), isOn: $app.settings.launchAtLogin)
+            if let error = app.launchAtLoginError {
+                Text(String(format: app.l("launch_at_login_failed"), error))
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+        }
+
+        Section(app.l("sec_update")) {
+            updateControls
+        }
+    }
+
+    @ViewBuilder private var dataSettings: some View {
+        Section(app.l("sec_history")) {
+            Toggle(app.l("save_history"), isOn: $app.settings.historyEnabled)
+            if app.settings.historyEnabled {
+                Stepper(
+                    app.settings.historyRetentionDays == 0
+                        ? app.l("retention_forever")
+                        : String(format: app.l("retention_days"), app.settings.historyRetentionDays),
+                    value: $app.settings.historyRetentionDays,
+                    in: 0...365
+                )
+                Text(app.l("history_privacy_help"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        Section(app.l("sec_storage")) {
+            storageRow(
+                title: app.l("settings_storage"),
+                diagnostic: app.settingsStorageDiagnostic
+            )
+            storageRow(
+                title: app.l("history_storage"),
+                diagnostic: app.historyStorageDiagnostic
+            )
+        }
+    }
+
+    @ViewBuilder private var updateControls: some View {
+        if let info = app.updateInfo {
+            LabeledContent(app.l("current_version"), value: info.currentVersion)
+            LabeledContent(app.l("latest_version"), value: info.latestVersion)
+            if info.updateAvailable {
+                Button(app.l("install_update")) {
+                    app.startUpdateInstall()
+                }
+                .disabled(app.updateStage.isBusy)
+            } else {
+                Label(app.l("up_to_date"), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+        }
+        Button(app.l("check_update")) {
+            app.startUpdateCheck()
+        }
+        .disabled(app.updateStage.isBusy)
+        if app.updateStage.isBusy {
+            HStack {
+                ProgressView().controlSize(.small)
+                Text(updateStageLabel)
+                Spacer()
+                if app.updateStage != .restarting && app.updateStage != .cancelling {
+                    Button(app.l("cancel")) { app.cancelUpdate() }
+                }
+            }
+        }
+        if case let .failed(operation, message) = app.updateStage {
+            Text(operation.map(updateFailureLabel) ?? app.l("update_failed"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            if operation == .restartApplication {
+                Button(app.l("restart_now")) {
+                    Task { await app.restartAfterUpdate() }
+                }
+            }
+        } else if app.updateStage == .restartRequired {
+            Text(app.l("update_restart"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button(app.l("restart_now")) {
+                Task { await app.restartAfterUpdate() }
+            }
+        } else if app.updateStage == .cancelled {
+            Text(app.l("update_cancelled"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
