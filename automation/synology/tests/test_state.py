@@ -110,6 +110,20 @@ class StateStoreTests(unittest.TestCase):
 
         self.assertFalse(self.store.claim(14, "U123", 300))
 
+    def test_open_pr_can_advance_to_ci_monitoring_phase(self) -> None:
+        self.assertTrue(self.store.claim(19, "U123", 300))
+        self.store.finish(
+            19,
+            "pr_open",
+            pr_number=21,
+            pr_url="https://github.com/90ms/pr-review-reminder/pull/21",
+        )
+
+        state = self.store.update_progress(19, JobPhase.MONITORING_CI)
+
+        self.assertEqual(state.status, "pr_open")
+        self.assertEqual(state.phase, JobPhase.MONITORING_CI)
+
     def test_expired_lease_is_marked_failed(self) -> None:
         self.assertTrue(self.store.claim(15, "U123", 300))
         expired = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
