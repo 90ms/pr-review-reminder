@@ -2,6 +2,14 @@ import XCTest
 @testable import PRRCore
 
 final class LocalizationAndFeedbackTests: XCTestCase {
+    final class FeedbackMemoryStore: KeyValueStore {
+        var values: [String: Data] = [:]
+        func data(forKey defaultName: String) -> Data? { values[defaultName] }
+        func set(_ value: Any?, forKey defaultName: String) {
+            values[defaultName] = value as? Data
+        }
+    }
+
     // AC11 — language resolution.
     func testAppLanguageResolution() {
         let ko = Locale(identifier: "ko_KR")
@@ -56,6 +64,14 @@ final class LocalizationAndFeedbackTests: XCTestCase {
     func testCreateIssueCommand() {
         let cmd = FeedbackService.createIssueCommand(gh: "/usr/bin/gh", repository: "acme/app", title: "Bug", body: "It broke")
         XCTAssertEqual(cmd.arguments, ["issue", "create", "-R", "acme/app", "--title", "Bug", "--body", "It broke"])
+        let view = FeedbackService.viewIssueCommand(gh: "/usr/bin/gh", repository: "acme/app", number: 42)
+        XCTAssertEqual(
+            view.arguments,
+            [
+                "issue", "view", "42", "-R", "acme/app", "--json",
+                "number,title,state,stateReason,url,updatedAt,closedAt",
+            ]
+        )
         let preview = FeedbackService.previewString(gh: "gh", repository: "acme/app", title: "A B", body: "line1\nline2")
         XCTAssertTrue(preview.contains("issue create"))
         XCTAssertTrue(preview.contains("\"A B\""))
@@ -70,6 +86,74 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         XCTAssertEqual(bad.title, "ft")
         XCTAssertEqual(bad.body, "fb")
     }
+
+    func testParseCreatedIssueRecord() {
+        let record = FeedbackService.parseCreatedIssue(
+            "https://github.com/90ms/pr-review-reminder/issues/123",
+            repository: "90ms/pr-review-reminder",
+            title: "Bug",
+            body: "It broke",
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(record?.id, "90ms/pr-review-reminder#123")
+        XCTAssertEqual(record?.number, 123)
+        XCTAssertEqual(record?.state, .open)
+        XCTAssertEqual(record?.createdAt, Date(timeIntervalSince1970: 100))
+        XCTAssertNil(FeedbackService.parseCreatedIssue("no url", repository: "90ms/pr-review-reminder", title: "Bug", body: "Body"))
+    }
+
+    func testParseIssueStatus() throws {
+        let status = try FeedbackService.parseIssueStatus(
+            """
+            {"title":"Done","state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/acme/app/issues/4","updatedAt":"2026-07-26T10:00:00Z","closedAt":"2026-07-26T11:00:00Z"}
+            """
+        )
+
+        XCTAssertEqual(status.title, "Done")
+        XCTAssertEqual(status.state, .closed)
+        XCTAssertEqual(status.stateReason, "COMPLETED")
+        XCTAssertNotNil(status.updatedAt)
+        XCTAssertNotNil(status.closedAt)
+    }
+
+    func testFeedbackHistoryPersistsNewestFirstAndReplacesIssue() {
+        let memory = FeedbackMemoryStore()
+        let store = FeedbackHistoryStore(store: memory, key: "feedback.test")
+        store.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 1,
+            title: "Older",
+            body: "Body",
+            url: "https://github.com/90ms/pr-review-reminder/issues/1",
+            createdAt: Date(timeIntervalSince1970: 100)
+        ))
+        store.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 2,
+            title: "Newer",
+            body: "Body",
+            url: "https://github.com/90ms/pr-review-reminder/issues/2",
+            createdAt: Date(timeIntervalSince1970: 200)
+        ))
+        store.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 1,
+            title: "Updated",
+            body: "Body",
+            url: "https://github.com/90ms/pr-review-reminder/issues/1",
+            createdAt: Date(timeIntervalSince1970: 100),
+            state: .closed,
+            stateReason: "COMPLETED"
+        ))
+
+        let reloaded = FeedbackHistoryStore(store: memory, key: "feedback.test")
+
+        XCTAssertEqual(reloaded.all().map(\.number), [2, 1])
+        XCTAssertEqual(reloaded.all().last?.title, "Updated")
+        XCTAssertEqual(reloaded.all().last?.state, .closed)
+    }
+
 
     // Tolerant decoding: an older saved schema (missing new keys) keeps its values
     // and fills new keys with defaults instead of wiping everything.
@@ -111,10 +195,15 @@ final class LocalizationAndFeedbackTests: XCTestCase {
 
         let result = try? await feedback.submit(title: "Bug", body: "It broke", ghPath: "/usr/bin/gh")
 
-        XCTAssertEqual(
-            result,
-            .created(output: "https://github.com/90ms/pr-review-reminder/issues/123")
-        )
+        guard case .created(let output, let record?) = result else {
+            return XCTFail("expected created")
+        }
+        XCTAssertEqual(output, "https://github.com/90ms/pr-review-reminder/issues/123")
+        XCTAssertEqual(record.repository, "90ms/pr-review-reminder")
+        XCTAssertEqual(record.number, 123)
+        XCTAssertEqual(record.title, "Bug")
+        XCTAssertEqual(record.body, "It broke")
+        XCTAssertEqual(record.url, "https://github.com/90ms/pr-review-reminder/issues/123")
         XCTAssertEqual(
             mock.commands.last?.arguments,
             [

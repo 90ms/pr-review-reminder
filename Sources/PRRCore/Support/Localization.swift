@@ -223,6 +223,13 @@ public struct L10n: Sendable {
         "fb_preview": "Command preview (not executed)",
         "fb_hold": "GitHub CLI is unavailable, so the issue was not created. The command that would run is shown below.",
         "fb_tidying": "Tidying…",
+        "fb_history": "Feedback history",
+        "fb_history_empty": "No feedback issues submitted yet.",
+        "fb_refresh": "Refresh",
+        "fb_open": "Open",
+        "fb_closed": "Closed",
+        "fb_resolved": "Resolved",
+        "fb_unknown": "Unknown",
     ]
 
     static let ko: [String: String] = [
@@ -408,6 +415,13 @@ public struct L10n: Sendable {
         "fb_preview": "커맨드 미리보기 (실행 안 됨)",
         "fb_hold": "GitHub CLI를 사용할 수 없어 이슈를 만들지 않았습니다. 실행될 커맨드는 아래와 같습니다.",
         "fb_tidying": "정돈 중…",
+        "fb_history": "의견 히스토리",
+        "fb_history_empty": "아직 등록한 의견 이슈가 없습니다.",
+        "fb_refresh": "새로고침",
+        "fb_open": "열림",
+        "fb_closed": "닫힘",
+        "fb_resolved": "해결됨",
+        "fb_unknown": "알 수 없음",
     ]
 
     static let table: [String: [String: String]] = ["en": en, "ko": ko]

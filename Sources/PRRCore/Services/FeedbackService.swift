@@ -21,6 +21,13 @@ public struct FeedbackService: Sendable {
         ])
     }
 
+    public static func viewIssueCommand(gh: String, repository: String, number: Int) -> Command {
+        Command(executable: gh, arguments: [
+            "issue", "view", "\(number)", "-R", repository, "--json",
+            "number,title,state,stateReason,url,updatedAt,closedAt"
+        ])
+    }
+
     /// Human-readable rendering of the command (for the preview box).
     public static func previewString(gh: String, repository: String, title: String, body: String) -> String {
         let cmd = createIssueCommand(gh: gh, repository: repository, title: title, body: body)
@@ -33,6 +40,14 @@ public struct FeedbackService: Sendable {
     // MARK: - AI tidy
 
     private struct TidyDTO: Decodable { let title: String?; let body: String? }
+    private struct IssueStatusDTO: Decodable {
+        let title: String?
+        let state: String?
+        let stateReason: String?
+        let url: String?
+        let updatedAt: Date?
+        let closedAt: Date?
+    }
 
     public static func parseTidy(_ raw: String, fallbackTitle: String, fallbackBody: String) -> (title: String, body: String) {
         guard let json = AIService.extractJSONObject(raw),
@@ -71,8 +86,8 @@ public struct FeedbackService: Sendable {
     public enum SubmitResult: Sendable, Equatable {
         /// GitHub CLI is unavailable, so nothing was executed.
         case held(preview: String)
-        /// Issue created; carries stdout (e.g. the issue URL).
-        case created(output: String)
+        /// Issue created; carries stdout (e.g. the issue URL) and local tracking metadata.
+        case created(output: String, record: FeedbackRecord?)
     }
 
     /// Submits feedback to the project repository. Without an available GitHub
@@ -92,6 +107,53 @@ public struct FeedbackService: Sendable {
             title: title,
             body: body
         )
-        return .created(output: result.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+        let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .created(
+            output: output,
+            record: Self.parseCreatedIssue(
+                output,
+                repository: Self.repository,
+                title: title,
+                body: body
+            )
+        )
+    }
+
+    public static func parseCreatedIssue(
+        _ output: String,
+        repository: String,
+        title: String,
+        body: String,
+        createdAt: Date = Date()
+    ) -> FeedbackRecord? {
+        let pattern = #"https://github\.com/\#(NSRegularExpression.escapedPattern(for: repository))/issues/([0-9]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
+              let numberRange = Range(match.range(at: 1), in: output),
+              let number = Int(output[numberRange]) else {
+            return nil
+        }
+        return FeedbackRecord(
+            repository: repository,
+            number: number,
+            title: title,
+            body: body,
+            url: "https://github.com/\(repository)/issues/\(number)",
+            createdAt: createdAt
+        )
+    }
+
+    public static func parseIssueStatus(_ raw: String) throws -> FeedbackIssueStatus {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let dto = try decoder.decode(IssueStatusDTO.self, from: Data(raw.utf8))
+        return FeedbackIssueStatus(
+            title: dto.title,
+            url: dto.url,
+            state: FeedbackIssueState(githubState: dto.state),
+            stateReason: dto.stateReason,
+            updatedAt: dto.updatedAt,
+            closedAt: dto.closedAt
+        )
     }
 }

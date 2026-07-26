@@ -95,12 +95,15 @@ public final class AppState: ObservableObject {
     @Published public var settings: AppSettings
     @Published public private(set) var settingsStorageDiagnostic: StorageDiagnostic
     @Published public private(set) var historyStorageDiagnostic: StorageDiagnostic
+    @Published public private(set) var feedbackHistoryStorageDiagnostic: StorageDiagnostic
     @Published public private(set) var updateInfo: AppUpdateInfo?
     @Published public private(set) var updateStage: AppUpdateStage = .idle
     /// PR currently shown in the detail window.
     @Published public var selectedItemID: String?
     /// Persisted review history, newest first.
     @Published public private(set) var historyItems: [ReviewRecord] = []
+    /// Submitted feedback issues, newest first.
+    @Published public private(set) var feedbackRecords: [FeedbackRecord] = []
     /// Persisted review currently shown in the read-only history detail window.
     @Published public var selectedHistoryID: String?
 
@@ -108,6 +111,7 @@ public final class AppState: ObservableObject {
     private let locator: ToolLocator
     private let settingsStore: SettingsStore
     private let history: HistoryStore
+    private let feedbackHistory: FeedbackHistoryStore
     private let scheduleRunStore: ScheduleRunStore
     private let launchAtLoginManager: LaunchAtLoginManaging
     private let sessionHealthStore: SessionHealthStore
@@ -124,6 +128,7 @@ public final class AppState: ObservableObject {
     public init(runner: ProcessRunning = SystemProcessRunner(),
                 settingsStore: SettingsStore = SettingsStore(),
                 history: HistoryStore = HistoryStore(),
+                feedbackHistory: FeedbackHistoryStore = FeedbackHistoryStore(),
                 scheduleRunStore: ScheduleRunStore = ScheduleRunStore(),
                 launchAtLoginManager: LaunchAtLoginManaging = LaunchAtLoginService(),
                 sessionHealthStore: SessionHealthStore = SessionHealthStore(),
@@ -132,6 +137,7 @@ public final class AppState: ObservableObject {
         self.locator = ToolLocator(runner: runner)
         self.settingsStore = settingsStore
         self.history = history
+        self.feedbackHistory = feedbackHistory
         self.scheduleRunStore = scheduleRunStore
         self.launchAtLoginManager = launchAtLoginManager
         self.sessionHealthStore = sessionHealthStore
@@ -139,7 +145,9 @@ public final class AppState: ObservableObject {
         self.settings = loadedSettings
         self.settingsStorageDiagnostic = settingsStore.diagnostic
         self.historyStorageDiagnostic = history.diagnostic
+        self.feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
         self.historyItems = loadedSettings.historyEnabled ? history.all() : []
+        self.feedbackRecords = feedbackHistory.all()
         self.scheduleRuns = scheduleRunStore.all()
         self.launchAtLoginError = nil
         self.feedbackDraft = nil
@@ -699,10 +707,41 @@ public final class AppState: ObservableObject {
         let github = ghPath.map { GitHubService(runner: runner, ghPath: $0) }
         let feedback = FeedbackService(github: github, ai: makeAIService())
         do {
-            return try await feedback.submit(title: title, body: body, ghPath: ghPath)
+            let result = try await feedback.submit(title: title, body: body, ghPath: ghPath)
+            if case .created(_, let record?) = result {
+                feedbackHistory.upsert(record)
+                feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
+                feedbackRecords = feedbackHistory.all()
+            }
+            return result
         } catch {
             lastError = "\(error)"
             return nil
+        }
+    }
+
+    public func refreshFeedbackHistory() async {
+        guard let ghPath else {
+            lastError = "gh is not ready."
+            return
+        }
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        do {
+            for var record in feedbackHistory.all() {
+                let status = try await github.fetchIssueStatus(
+                    repository: record.repository,
+                    number: record.number
+                )
+                record.apply(status)
+                feedbackHistory.upsert(record)
+            }
+            feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
+            feedbackRecords = feedbackHistory.all()
+            lastError = nil
+        } catch {
+            feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
+            feedbackRecords = feedbackHistory.all()
+            lastError = "\(error)"
         }
     }
 
