@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pr_issue_worker.config import ConfigError
 from pr_issue_worker.models import (
     CheckResult,
     Issue,
+    JobPhase,
     JobResult,
     JobStatus,
     PullRequest,
@@ -60,6 +62,7 @@ class _WorkerStub:
             {
                 "ready_label": "codex-ready",
                 "lease_seconds": 300,
+                "job_timeout_seconds": 3600,
                 "dry_run": False,
             },
         )()
@@ -67,7 +70,14 @@ class _WorkerStub:
         self.result: JobResult | None = None
         self.error: Exception | None = None
 
-    def run(self, issue_number: int, approved_by: str, *, already_claimed=False):
+    def run(
+        self,
+        issue_number: int,
+        approved_by: str,
+        *,
+        already_claimed=False,
+        progress_callback=None,
+    ):
         self.calls.append((issue_number, approved_by, already_claimed))
         if self.error:
             raise self.error
@@ -96,6 +106,10 @@ class SlackSettingsTests(unittest.TestCase):
         settings = _settings(ENABLE_INTERNAL_SCANNER="false")
 
         self.assertFalse(settings.internal_scanner_enabled)
+
+    def test_rejects_fast_status_update_interval(self) -> None:
+        with self.assertRaisesRegex(ConfigError, "at least 15"):
+            _settings(STATUS_UPDATE_INTERVAL_SECONDS="10")
 
 
 class SlackAutomationTests(unittest.TestCase):
@@ -276,6 +290,104 @@ class SlackAutomationTests(unittest.TestCase):
         self.assertIn("CI 통과", self.client.posts[-1]["text"])
         self.assertEqual(self.client.posts[-1]["thread_ts"], "123.456")
 
+    def test_running_status_shows_phase_health_and_refresh_button(self) -> None:
+        self._claim_issue()
+        now = datetime.now(UTC).isoformat()
+        state = self.state.update_progress(
+            8,
+            JobPhase.CODEX_RUNNING,
+            job_id="00000000-0000-0000-0000-000000000008",
+            runner_updated_at=now,
+        )
+
+        self.automation._update_progress_message(self.issue, state, force=True)
+
+        blocks = self.client.updates[-1]["blocks"]
+        status = blocks[1]["text"]["text"]
+        actions = [block for block in blocks if block["type"] == "actions"]
+        self.assertIn("Codex 구현 중", status)
+        self.assertIn("Runner 정상", status)
+        self.assertEqual(
+            actions[0]["elements"][0]["text"]["text"],
+            "상태 새로고침",
+        )
+
+    def test_authorized_user_can_refresh_running_status(self) -> None:
+        self._claim_issue()
+        self.state.update_progress(8, JobPhase.PREPARING)
+        responses: list[dict] = []
+
+        self.automation.handle_status_refresh(
+            {"user": {"id": "U123"}, "actions": [{"value": "8"}]},
+            lambda: None,
+            lambda **value: responses.append(value),
+        )
+
+        self.assertIn("갱신", responses[0]["text"])
+        self.assertIn("저장소 준비 중", self.client.updates[-1]["text"])
+
+    def test_unauthorized_user_cannot_refresh_running_status(self) -> None:
+        self._claim_issue()
+        self.state.update_progress(8, JobPhase.PREPARING)
+        responses: list[dict] = []
+
+        self.automation.handle_status_refresh(
+            {"user": {"id": "U-NOT-ALLOWED"}, "actions": [{"value": "8"}]},
+            lambda: None,
+            lambda **value: responses.append(value),
+        )
+
+        self.assertIn("권한", responses[0]["text"])
+        self.assertEqual(self.client.updates, [])
+
+    def test_same_progress_phase_is_throttled(self) -> None:
+        self._claim_issue()
+        state = self.state.update_progress(8, JobPhase.PREPARING)
+
+        self.automation._update_progress_message(self.issue, state)
+        self.automation._update_progress_message(self.issue, state)
+
+        self.assertEqual(len(self.client.updates), 1)
+
+    def test_stale_runner_warning_is_broadcast_only_once(self) -> None:
+        self._claim_issue()
+        stale = (datetime.now(UTC) - timedelta(minutes=2)).isoformat()
+        state = self.state.update_progress(
+            8,
+            JobPhase.CODEX_RUNNING,
+            runner_updated_at=stale,
+        )
+
+        self.automation._update_progress_message(self.issue, state, force=True)
+        self.automation._update_progress_message(self.issue, state, force=True)
+
+        warnings = [
+            post for post in self.client.posts if "heartbeat" in post["text"]
+        ]
+        self.assertEqual(len(warnings), 1)
+
+    def test_timeout_warning_is_broadcast_only_once(self) -> None:
+        self._claim_issue()
+        started = (datetime.now(UTC) - timedelta(seconds=3350)).isoformat()
+        with self.state._connect() as connection:
+            connection.execute(
+                "UPDATE issue_jobs SET started_at = ? WHERE issue_number = 8",
+                (started,),
+            )
+        state = self.state.update_progress(
+            8,
+            JobPhase.CODEX_RUNNING,
+            runner_updated_at=datetime.now(UTC).isoformat(),
+        )
+
+        self.automation._update_progress_message(self.issue, state, force=True)
+        self.automation._update_progress_message(self.issue, state, force=True)
+
+        warnings = [
+            post for post in self.client.posts if "timeout" in post["text"]
+        ]
+        self.assertEqual(len(warnings), 1)
+
     def _claim_issue(self) -> None:
         self.state.record_notification(8, "123.456")
         self.assertTrue(self.state.claim(8, "U123", 300))
@@ -289,6 +401,9 @@ def _settings(**overrides: str) -> SlackSettings:
         "SLACK_ALLOWED_USER_IDS": "U123,U456",
         "SCAN_INTERVAL_SECONDS": "300",
         "ENABLE_INTERNAL_SCANNER": "true",
+        "STATUS_UPDATE_INTERVAL_SECONDS": "60",
+        "JOB_HEARTBEAT_STALE_SECONDS": "45",
+        "JOB_TIMEOUT_WARNING_SECONDS": "300",
     }
     values.update(overrides)
     return SlackSettings.from_env(values)

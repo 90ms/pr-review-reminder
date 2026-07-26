@@ -4,18 +4,21 @@ import html
 import logging
 import os
 import threading
+import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from .config import ConfigError
 from .github import GitHubClient
-from .models import Issue, JobResult, JobStatus
-from .state import StateStore
+from .models import Issue, JobPhase, JobResult, JobStatus
+from .state import JobState, StateStore
 from .worker import IssueWorker
 
 _IMPLEMENT_ACTION = "implement_github_issue"
+_STATUS_ACTION = "refresh_github_issue_status"
 _NOTIFIED_LABEL = "codex-notified"
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +31,9 @@ class SlackSettings:
     allowed_user_ids: frozenset[str]
     scan_interval_seconds: int
     internal_scanner_enabled: bool
+    status_update_interval_seconds: int
+    job_heartbeat_stale_seconds: int
+    timeout_warning_seconds: int
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> SlackSettings:
@@ -46,12 +52,28 @@ class SlackSettings:
             raise ConfigError("SLACK_BOT_TOKEN must start with xoxb-")
         if not allowed_users:
             raise ConfigError("SLACK_ALLOWED_USER_IDS must not be empty")
-        try:
-            interval = int(values.get("SCAN_INTERVAL_SECONDS", "300"))
-        except ValueError as error:
-            raise ConfigError("SCAN_INTERVAL_SECONDS must be an integer") from error
+        interval = _integer(values, "SCAN_INTERVAL_SECONDS", 300)
         if interval < 30:
             raise ConfigError("SCAN_INTERVAL_SECONDS must be at least 30")
+        status_interval = _integer(
+            values, "STATUS_UPDATE_INTERVAL_SECONDS", 60
+        )
+        if status_interval < 15:
+            raise ConfigError(
+                "STATUS_UPDATE_INTERVAL_SECONDS must be at least 15"
+            )
+        stale_seconds = _integer(
+            values, "JOB_HEARTBEAT_STALE_SECONDS", 45
+        )
+        if stale_seconds < 10:
+            raise ConfigError(
+                "JOB_HEARTBEAT_STALE_SECONDS must be at least 10"
+            )
+        timeout_warning = _integer(
+            values, "JOB_TIMEOUT_WARNING_SECONDS", 300
+        )
+        if timeout_warning <= 0:
+            raise ConfigError("JOB_TIMEOUT_WARNING_SECONDS must be positive")
         return cls(
             app_token,
             bot_token,
@@ -62,6 +84,9 @@ class SlackSettings:
                 values.get("ENABLE_INTERNAL_SCANNER", "true"),
                 "ENABLE_INTERNAL_SCANNER",
             ),
+            status_interval,
+            stale_seconds,
+            timeout_warning,
         )
 
 
@@ -89,6 +114,10 @@ class SlackAutomation:
             max_workers=2, thread_name_prefix="ci-monitor"
         )
         self._stop_event = threading.Event()
+        self._progress_lock = threading.Lock()
+        self._last_progress_update: dict[int, tuple[float, str | None]] = {}
+        self._stale_warnings: set[int] = set()
+        self._timeout_warnings: set[int] = set()
 
     def scan_once(self) -> int:
         self._recover_stale_jobs()
@@ -184,12 +213,61 @@ class SlackAutomation:
             )
             return
 
+        with self._progress_lock:
+            self._stale_warnings.discard(issue.number)
+            self._timeout_warnings.discard(issue.number)
+            self._last_progress_update.pop(issue.number, None)
         self._update_message(
             issue,
             f"승인됨 · <@{user_id}> · 구현 작업 대기 중",
             include_button=False,
+            include_status_button=True,
         )
         self.work_executor.submit(self._run_job, issue, user_id)
+
+    def handle_status_refresh(
+        self,
+        body: dict[str, Any],
+        ack: Callable[[], None],
+        respond: Callable[..., Any],
+    ) -> None:
+        ack()
+        user_id = str(body.get("user", {}).get("id", ""))
+        if user_id not in self.settings.allowed_user_ids:
+            respond(
+                text="작업 상태를 확인할 권한이 없습니다.",
+                response_type="ephemeral",
+                replace_original=False,
+            )
+            return
+        try:
+            issue_number = int(body["actions"][0]["value"])
+            issue = self.github.get_issue(issue_number)
+        except (KeyError, IndexError, RuntimeError, TypeError, ValueError) as error:
+            respond(
+                text=f"작업 상태를 확인하지 못했습니다: {error}",
+                response_type="ephemeral",
+                replace_original=False,
+            )
+            return
+        state = self.state.get(issue_number)
+        if (
+            state is None
+            or state.phase is None
+            or state.status not in {"running", "pr_open"}
+        ):
+            respond(
+                text="현재 실행 중이거나 CI 확인 중인 작업이 없습니다.",
+                response_type="ephemeral",
+                replace_original=False,
+            )
+            return
+        self._update_progress_message(issue, state, force=True)
+        respond(
+            text="최신 작업 상태로 갱신했습니다.",
+            response_type="ephemeral",
+            replace_original=False,
+        )
 
     def start_scanner(self) -> threading.Thread:
         thread = threading.Thread(
@@ -218,15 +296,40 @@ class SlackAutomation:
             issue,
             f"구현 중 · 승인자 <@{approved_by}>",
             include_button=False,
+            include_status_button=True,
         )
         self._post_lifecycle_notification(
             issue,
             f"🚀 <@{approved_by}> · Issue #{issue.number} 구현을 시작했습니다.",
         )
+        monitor_stop = threading.Event()
+        monitor = self._start_progress_monitor(issue, monitor_stop)
+        result: JobResult | None = None
+        worker_error: Exception | None = None
         try:
-            result = self.worker.run(issue.number, approved_by, already_claimed=True)
+            result = self.worker.run(
+                issue.number,
+                approved_by,
+                already_claimed=True,
+                progress_callback=lambda state: self._update_progress_message(
+                    issue, state
+                ),
+            )
         except Exception as error:
-            self._handle_unexpected_worker_error(issue, approved_by, error)
+            worker_error = error
+        finally:
+            monitor_stop.set()
+            monitor.join(timeout=1)
+
+        if worker_error is not None:
+            self._handle_unexpected_worker_error(issue, approved_by, worker_error)
+            return
+        if result is None:
+            self._handle_unexpected_worker_error(
+                issue,
+                approved_by,
+                RuntimeError("worker returned no result"),
+            )
             return
 
         if result.status is JobStatus.COMPLETED and result.pull_request:
@@ -235,6 +338,7 @@ class SlackAutomation:
                 f"Draft PR 생성 완료: <{result.pull_request.url}|"
                 f"#{result.pull_request.number}> · CI 확인 중",
                 include_button=False,
+                include_status_button=True,
             )
             self._post_lifecycle_notification(
                 issue,
@@ -279,9 +383,18 @@ class SlackAutomation:
         pull_request = result.pull_request
         if pull_request is None:
             return
-        check_result = self.github.wait_for_pr_checks(
-            pull_request.number, self.ci_timeout_seconds
-        )
+        state = self.state.update_progress(issue.number, JobPhase.MONITORING_CI)
+        if state is not None:
+            self._update_progress_message(issue, state, force=True)
+        monitor_stop = threading.Event()
+        monitor = self._start_progress_monitor(issue, monitor_stop)
+        try:
+            check_result = self.github.wait_for_pr_checks(
+                pull_request.number, self.ci_timeout_seconds
+            )
+        finally:
+            monitor_stop.set()
+            monitor.join(timeout=1)
         status = "CI 통과" if check_result.passed else "CI 실패 또는 미완료"
         self._update_message(
             issue,
@@ -295,6 +408,110 @@ class SlackAutomation:
             f"{icon} Issue #{issue.number} Draft PR "
             f"<{pull_request.url}|#{pull_request.number}>의 {status} 결과가 "
             "도착했습니다.",
+        )
+
+    def _start_progress_monitor(
+        self,
+        issue: Issue,
+        stop: threading.Event,
+    ) -> threading.Thread:
+        thread = threading.Thread(
+            target=self._progress_monitor_loop,
+            args=(issue, stop),
+            name=f"slack-progress-{issue.number}",
+            daemon=True,
+        )
+        thread.start()
+        return thread
+
+    def _progress_monitor_loop(
+        self,
+        issue: Issue,
+        stop: threading.Event,
+    ) -> None:
+        while not stop.wait(self.settings.status_update_interval_seconds):
+            state = self.state.get(issue.number)
+            if state is None or state.status not in {"running", "pr_open"}:
+                return
+            self._update_progress_message(issue, state, force=True)
+
+    def _update_progress_message(
+        self,
+        issue: Issue,
+        state: JobState,
+        *,
+        force: bool = False,
+    ) -> None:
+        now_monotonic = time.monotonic()
+        with self._progress_lock:
+            previous = self._last_progress_update.get(issue.number)
+            phase_changed = previous is None or previous[1] != state.phase
+            interval_elapsed = (
+                previous is None
+                or now_monotonic - previous[0]
+                >= self.settings.status_update_interval_seconds
+            )
+            should_update = force or phase_changed or interval_elapsed
+            if should_update:
+                self._last_progress_update[issue.number] = (
+                    now_monotonic,
+                    state.phase,
+                )
+        if should_update:
+            self._update_message(
+                issue,
+                _progress_status(state, self.settings.job_heartbeat_stale_seconds),
+                include_button=False,
+                include_status_button=True,
+            )
+        self._warn_if_progress_is_stale(issue, state)
+        self._warn_if_timeout_is_near(issue, state)
+
+    def _warn_if_progress_is_stale(
+        self,
+        issue: Issue,
+        state: JobState,
+    ) -> None:
+        if state.phase not in {
+            JobPhase.RUNNER_CLAIMED.value,
+            JobPhase.CODEX_RUNNING.value,
+        }:
+            return
+        age = _age_seconds(state.runner_updated_at)
+        if age is None or age <= self.settings.job_heartbeat_stale_seconds:
+            return
+        with self._progress_lock:
+            if issue.number in self._stale_warnings:
+                return
+            self._stale_warnings.add(issue.number)
+        self._post_lifecycle_notification(
+            issue,
+            f"⚠️ Issue #{issue.number} Runner heartbeat가 "
+            f"{_duration(age)} 동안 갱신되지 않았습니다. "
+            "작업은 자동 종료하지 않으며 상태를 다시 확인합니다.",
+        )
+
+    def _warn_if_timeout_is_near(
+        self,
+        issue: Issue,
+        state: JobState,
+    ) -> None:
+        if state.phase != JobPhase.CODEX_RUNNING.value:
+            return
+        elapsed = _age_seconds(state.started_at)
+        if elapsed is None:
+            return
+        remaining = self.worker.config.job_timeout_seconds - elapsed
+        if remaining > self.settings.timeout_warning_seconds or remaining <= 0:
+            return
+        with self._progress_lock:
+            if issue.number in self._timeout_warnings:
+                return
+            self._timeout_warnings.add(issue.number)
+        self._post_lifecycle_notification(
+            issue,
+            f"⚠️ Issue #{issue.number} Codex timeout까지 약 "
+            f"{_duration(remaining)} 남았습니다.",
         )
 
     def _handle_unexpected_worker_error(
@@ -338,6 +555,7 @@ class SlackAutomation:
         *,
         include_button: bool,
         button_text: str = "구현 시작",
+        include_status_button: bool = False,
     ) -> None:
         state = self.state.get(issue.number)
         if state is None or not state.message_ts:
@@ -353,6 +571,7 @@ class SlackAutomation:
                     status,
                     include_button=include_button,
                     button_text=button_text,
+                    include_status_button=include_status_button,
                 ),
             )
         except Exception:
@@ -403,6 +622,7 @@ def run_socket_service(
         ci_timeout_seconds=ci_timeout_seconds,
     )
     app.action(_IMPLEMENT_ACTION)(automation.handle_implementation)
+    app.action(_STATUS_ACTION)(automation.handle_status_refresh)
     if settings.internal_scanner_enabled:
         automation.start_scanner()
     try:
@@ -450,6 +670,7 @@ def _status_blocks(
     *,
     include_button: bool,
     button_text: str,
+    include_status_button: bool = False,
 ) -> list[dict[str, Any]]:
     title = html.escape(_truncate(issue.title, 220))
     author = html.escape(issue.author)
@@ -469,33 +690,43 @@ def _status_blocks(
             },
         },
     ]
+    actions: list[dict[str, Any]] = []
     if include_button:
+        actions.append(
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": button_text},
+                "style": "primary",
+                "action_id": _IMPLEMENT_ACTION,
+                "value": str(issue.number),
+                "confirm": {
+                    "title": {
+                        "type": "plain_text",
+                        "text": "Codex 구현을 시작할까요?",
+                    },
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "브랜치를 push하고 Draft PR을 만들 수 있습니다.",
+                    },
+                    "confirm": {"type": "plain_text", "text": "시작"},
+                    "deny": {"type": "plain_text", "text": "취소"},
+                },
+            }
+        )
+    if include_status_button:
+        actions.append(
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "상태 새로고침"},
+                "action_id": _STATUS_ACTION,
+                "value": str(issue.number),
+            }
+        )
+    if actions:
         blocks.append(
             {
                 "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": button_text},
-                        "style": "primary",
-                        "action_id": _IMPLEMENT_ACTION,
-                        "value": str(issue.number),
-                        "confirm": {
-                            "title": {
-                                "type": "plain_text",
-                                "text": "Codex 구현을 시작할까요?",
-                            },
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": (
-                                    "브랜치를 push하고 Draft PR을 만들 수 있습니다."
-                                ),
-                            },
-                            "confirm": {"type": "plain_text", "text": "시작"},
-                            "deny": {"type": "plain_text", "text": "취소"},
-                        },
-                    }
-                ],
+                "elements": actions,
             }
         )
     return blocks
@@ -506,6 +737,17 @@ def _required(values: Mapping[str, str], name: str) -> str:
     if not value:
         raise ConfigError(f"{name} is required")
     return value
+
+
+def _integer(
+    values: Mapping[str, str],
+    name: str,
+    default: int,
+) -> int:
+    try:
+        return int(values.get(name, str(default)))
+    except ValueError as error:
+        raise ConfigError(f"{name} must be an integer") from error
 
 
 def _boolean(raw: str, name: str) -> bool:
@@ -527,3 +769,72 @@ def _escape_message(value: str) -> str:
 
 def _code_block(value: str, limit: int) -> str:
     return _truncate(value.replace("```", "'''"), limit)
+
+
+def _progress_status(state: JobState, stale_seconds: int) -> str:
+    labels = {
+        JobPhase.PREPARING.value: "저장소 준비 중",
+        JobPhase.QUEUED.value: "Runner 대기 중",
+        JobPhase.RUNNER_CLAIMED.value: "Runner가 작업을 수신함",
+        JobPhase.CODEX_RUNNING.value: "Codex 구현 중",
+        JobPhase.RESULT_READY.value: "Runner 결과 수신",
+        JobPhase.VALIDATING.value: "변경사항 검증 중",
+        JobPhase.PUSHING.value: "브랜치 push 중",
+        JobPhase.CREATING_PR.value: "Draft PR 생성 중",
+        JobPhase.MONITORING_CI.value: "GitHub Actions 확인 중",
+    }
+    phase = labels.get(state.phase or "", "작업 상태 확인 중")
+    elapsed = _age_seconds(state.started_at)
+    activity_at = (
+        state.runner_updated_at
+        if state.phase
+        in {JobPhase.RUNNER_CLAIMED.value, JobPhase.CODEX_RUNNING.value}
+        else state.progress_updated_at
+    )
+    activity_age = _age_seconds(activity_at)
+    if state.phase in {
+        JobPhase.RUNNER_CLAIMED.value,
+        JobPhase.CODEX_RUNNING.value,
+    }:
+        if activity_age is None:
+            health = "Runner 확인 중"
+        elif activity_age > stale_seconds:
+            health = f"Runner 응답 지연 · 마지막 활동 {_duration(activity_age)} 전"
+        else:
+            health = f"Runner 정상 · 마지막 활동 {_duration(activity_age)} 전"
+    else:
+        health = (
+            f"Controller 정상 · 마지막 활동 {_duration(activity_age)} 전"
+            if activity_age is not None
+            else "Controller 상태 확인 중"
+        )
+    lines = [
+        f"{phase} · 승인자 <@{state.approved_by or 'unknown'}>",
+        f"경과 {_duration(elapsed or 0)} · {health}",
+    ]
+    if state.phase == JobPhase.MONITORING_CI.value and state.pr_url:
+        lines.append(f"Draft PR <{state.pr_url}|#{state.pr_number}>")
+    return "\n".join(lines)
+
+
+def _age_seconds(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        return None
+    return max(0.0, (datetime.now(UTC) - timestamp).total_seconds())
+
+
+def _duration(seconds: float) -> str:
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}시간 {minutes}분"
+    if minutes:
+        return f"{minutes}분 {seconds}초"
+    return f"{seconds}초"

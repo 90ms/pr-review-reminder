@@ -174,7 +174,7 @@ class StateStore:
                     job_id = COALESCE(?, job_id),
                     runner_updated_at = COALESCE(?, runner_updated_at),
                     updated_at = ?
-                WHERE issue_number = ? AND status = 'running'
+                WHERE issue_number = ? AND status IN ('running', 'pr_open')
                 """,
                 (
                     phase.value,
