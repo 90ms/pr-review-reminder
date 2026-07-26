@@ -27,6 +27,33 @@ private final class DetailAttemptCounter: @unchecked Sendable {
     }
 }
 
+private final class ReReviewScript: @unchecked Sendable {
+    private let lock = NSLock()
+    private var detailCount = 0
+    private var analysisCount = 0
+
+    func nextDetailsJSON() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        detailCount += 1
+        return AppStateTests.detailsJSON(sha: detailCount == 1 ? "old-sha" : "fresh-sha")
+    }
+
+    func nextDiff() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return detailCount <= 1 ? "old diff" : "fresh diff"
+    }
+
+    func nextAnalysisJSON() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        analysisCount += 1
+        let summary = analysisCount == 1 ? "old analysis" : "fresh analysis"
+        return #"{"result":"{\"summary\":\"\#(summary)\",\"reviewPoints\":[],\"inlineComments\":[]}","total_cost_usd":0.01,"usage":{"input_tokens":10,"output_tokens":5}}"#
+    }
+}
+
 private final class CancellableAppStateRunner: ProcessRunning, @unchecked Sendable {
     func run(_ command: Command) async throws -> CommandResult {
         if command.executable == "/bin/zsh", command.arguments.first == "-lc" {
@@ -229,6 +256,44 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.items.first?.usage?.tokens, 15)
         XCTAssertEqual(history.all().first?.headSha, "new-sha")
         XCTAssertTrue(runner.commands.contains { $0.arguments.first == "-p" })
+    }
+
+    func testStartReReviewDiscardsCompletedResultAndFetchesFreshDetails() async {
+        let script = ReReviewScript()
+        let history = HistoryStore(persistence: AppStateMemoryHistoryPersistence())
+        let (state, _) = await makeState(history: history) { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "uncached-sha\n", stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(exitCode: 0, stdout: script.nextDetailsJSON(), stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "diff"] {
+                return CommandResult(exitCode: 0, stdout: script.nextDiff(), stderr: "")
+            }
+            if command.arguments.first == "-p" {
+                return CommandResult(exitCode: 0, stdout: script.nextAnalysisJSON(), stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refresh()
+        await state.review("acme/widgets#42", notifyOnComplete: false)
+        XCTAssertEqual(state.items.first?.analysis?.summary, "old analysis")
+        XCTAssertEqual(state.items.first?.details?.headSha, "old-sha")
+
+        state.startReReview("acme/widgets#42", notifyOnComplete: false)
+        for _ in 0..<100 where state.items.first?.analysis?.summary != "fresh analysis" {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(state.items.first?.state, .done)
+        XCTAssertEqual(state.items.first?.analysis?.summary, "fresh analysis")
+        XCTAssertEqual(state.items.first?.details?.headSha, "fresh-sha")
+        XCTAssertEqual(history.all().first?.headSha, "fresh-sha")
     }
 
     func testEnsureDetailsExposesFailureAndCanRetry() async {

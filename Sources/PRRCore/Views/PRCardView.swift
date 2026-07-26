@@ -101,6 +101,11 @@ struct PRCardView: View {
     private var actionButtons: some View {
         HStack(spacing: 8) {
             Button {
+                app.startReReview(item.id)
+            } label: { Label(app.l("review_again"), systemImage: "arrow.clockwise") }
+            .buttonStyle(.bordered).controlSize(.small)
+
+            Button {
                 app.select(item)
                 openWindow(id: "pr-detail"); NSApplication.shared.activate(ignoringOtherApps: true)
             } label: { Label(app.l("view_detail"), systemImage: "rectangle.expand.vertical") }

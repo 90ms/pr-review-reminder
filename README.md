@@ -88,7 +88,7 @@ pr-review-reminder --doctor
 ```
 
 진단이 통과하면 `pr-review-reminder`를 실행합니다. 메뉴바 오른쪽의 체크리스트
-아이콘을 누르고 설정에서 다음 항목을 확인하세요.
+아이콘을 누르고 설정 탭에서 다음 항목을 확인하세요.
 
 1. 리뷰를 찾을 GitHub owner/org와 선택적 repository 목록
 2. 사용할 AI 도구(`claude` 또는 `codex`)와 리뷰 출력 언어
@@ -100,7 +100,8 @@ pr-review-reminder --doctor
 
 1. **새로고침**으로 리뷰 대기 PR을 수집합니다. 이 단계는 AI 리뷰를 실행하거나
    GitHub에 쓰지 않습니다.
-2. PR 카드에서 **코드 리뷰**를 눌러 AI 초안을 생성합니다.
+2. PR 카드에서 **코드 리뷰**를 눌러 AI 초안을 생성합니다. 완료된 PR은
+   **리뷰 다시하기**로 현재 head와 diff를 다시 가져와 새 초안을 만들 수 있습니다.
 3. **자세히 보기**에서 `리뷰 / 변경 내용 / 나란히` 레이아웃을 선택하고 요약,
    리뷰 포인트, Split/Unified diff와 인라인 코멘트를 검토·편집합니다.
 4. 제출 미리보기에서 코멘트만 남기거나 코멘트와 함께 승인할지 선택합니다.
@@ -112,7 +113,7 @@ pr-review-reminder --doctor
 |---|---|
 | PR 수집 | `review-requested:@me` 기반, owner/repository 범위 설정, 최대 1,000건 검색 |
 | 조회 진단 | GitHub 재시도 횟수, rate limit 실패와 1,000건 검색 상한 표시 |
-| AI 리뷰 | Claude/Codex CLI, 사용자 프롬프트·리뷰 규칙, 10분 timeout과 취소 |
+| AI 리뷰 | Claude/Codex CLI, 사용자 프롬프트·리뷰 규칙, 완료 결과 다시 리뷰, 10분 timeout과 취소 |
 | 상세·Diff | 리뷰/변경/나란히 집중 보기, 파일 검색·변경 줄·인라인 코멘트 위치 이동, 긴 줄 가로 스크롤 |
 | 게시 안전 | 미리보기, 게시 직전 head SHA 재확인, 단일 GitHub review 제출 |
 | 히스토리 | 상세/diff 저장, 같은 head 결과 복원, 보존 기간과 전체 삭제 |
