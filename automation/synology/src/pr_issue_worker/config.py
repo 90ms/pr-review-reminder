@@ -57,6 +57,10 @@ class Config:
             ).split(",")
             if item.strip()
         )
+        job_timeout_seconds = _positive_int(values, "JOB_TIMEOUT_SECONDS", default=3600)
+        lease_seconds = _positive_int(values, "LEASE_SECONDS", default=3900)
+        if lease_seconds <= job_timeout_seconds:
+            raise ConfigError("LEASE_SECONDS must be greater than JOB_TIMEOUT_SECONDS")
 
         return cls(
             repository=repository,
@@ -66,13 +70,11 @@ class Config:
                 values.get("STATE_PATH", str(data_path / "state.sqlite3"))
             ).expanduser(),
             workspace_path=workspace_path,
-            job_timeout_seconds=_positive_int(
-                values, "JOB_TIMEOUT_SECONDS", default=3600
-            ),
+            job_timeout_seconds=job_timeout_seconds,
             ci_timeout_seconds=_positive_int(
                 values, "CI_TIMEOUT_SECONDS", default=1800
             ),
-            lease_seconds=_positive_int(values, "LEASE_SECONDS", default=3900),
+            lease_seconds=lease_seconds,
             codex_bin=values.get("CODEX_BIN", "codex"),
             gh_bin=values.get("GH_BIN", "gh"),
             git_bin=values.get("GIT_BIN", "git"),

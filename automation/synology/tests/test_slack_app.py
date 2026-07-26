@@ -27,6 +27,7 @@ class _GitHubStub:
     def __init__(self, issue: Issue):
         self.issue = issue
         self.added_labels: list[str] = []
+        self.removed_labels: list[str] = []
 
     def list_issues(self, label: str):
         return [self.issue]
@@ -36,6 +37,9 @@ class _GitHubStub:
 
     def add_labels(self, issue_number: int, labels):
         self.added_labels.extend(labels)
+
+    def remove_labels(self, issue_number: int, labels):
+        self.removed_labels.extend(labels)
 
 
 class _WorkerStub:
@@ -140,6 +144,30 @@ class SlackAutomationTests(unittest.TestCase):
         )
 
         self.assertIn("이미 실행 중", responses[0]["text"])
+
+    def test_scan_recovers_expired_job_with_retry_button(self) -> None:
+        self.state.record_notification(8, "123.456")
+        self.assertTrue(self.state.claim(8, "U123", 300))
+        with self.state._connect() as connection:
+            connection.execute(
+                """
+                UPDATE issue_jobs
+                SET lease_until = '2000-01-01T00:00:00+00:00'
+                WHERE issue_number = 8
+                """
+            )
+
+        self.assertEqual(self.automation.scan_once(), 0)
+
+        self.assertIn("codex-running", self.github.removed_labels)
+        self.assertIn("codex-failed", self.github.added_labels)
+        self.assertEqual(self.state.get(8).status, "failed")
+        actions = [
+            block
+            for block in self.client.updates[-1]["blocks"]
+            if block["type"] == "actions"
+        ]
+        self.assertEqual(actions[0]["elements"][0]["text"]["text"], "재시도")
 
 
 def _settings(**overrides: str) -> SlackSettings:

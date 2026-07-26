@@ -91,6 +91,7 @@ class SlackAutomation:
         self._stop_event = threading.Event()
 
     def scan_once(self) -> int:
+        self._recover_stale_jobs()
         notified = 0
         for issue in self.github.list_issues(self.worker.config.ready_label):
             if _NOTIFIED_LABEL in issue.labels or not self.state.needs_notification(
@@ -109,6 +110,21 @@ class SlackAutomation:
                 self.github.add_labels(issue.number, [_NOTIFIED_LABEL])
                 notified += 1
         return notified
+
+    def _recover_stale_jobs(self) -> None:
+        for issue_number in self.state.expire_stale_leases():
+            try:
+                issue = self.github.get_issue(issue_number)
+                self.github.remove_labels(issue_number, ["codex-running"])
+                self.github.add_labels(issue_number, ["codex-failed"])
+                self._update_message(
+                    issue,
+                    "이전 작업 lease가 만료되었습니다. 로그를 확인한 뒤 다시 승인하세요.",
+                    include_button=True,
+                    button_text="재시도",
+                )
+            except Exception:
+                _LOGGER.exception("Failed to recover stale issue #%s", issue_number)
 
     def handle_implementation(
         self,

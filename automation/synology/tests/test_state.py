@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pr_issue_worker.state import StateStore
@@ -44,6 +45,20 @@ class StateStoreTests(unittest.TestCase):
         )
 
         self.assertFalse(self.store.claim(14, "U123", 300))
+
+    def test_expired_lease_is_marked_failed(self) -> None:
+        self.assertTrue(self.store.claim(15, "U123", 300))
+        expired = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+        with self.store._connect() as connection:
+            connection.execute(
+                "UPDATE issue_jobs SET lease_until = ? WHERE issue_number = 15",
+                (expired,),
+            )
+
+        self.assertEqual(self.store.expire_stale_leases(), [15])
+        state = self.store.get(15)
+        self.assertEqual(state.status, "failed")
+        self.assertIn("lease expired", state.last_error)
 
 
 if __name__ == "__main__":

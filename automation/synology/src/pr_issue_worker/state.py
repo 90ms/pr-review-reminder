@@ -133,6 +133,35 @@ class StateStore:
                 (status, error, pr_number, pr_url, _now(), issue_number),
             )
 
+    def expire_stale_leases(self) -> list[int]:
+        now = datetime.now(UTC)
+        expired: list[int] = []
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT issue_number FROM issue_jobs
+                WHERE status = 'running'
+                  AND lease_until IS NOT NULL
+                  AND lease_until <= ?
+                """,
+                (now.isoformat(),),
+            ).fetchall()
+            expired = [int(row[0]) for row in rows]
+            if expired:
+                placeholders = ",".join("?" for _ in expired)
+                connection.execute(
+                    f"""
+                    UPDATE issue_jobs
+                    SET status = 'failed', lease_until = NULL,
+                        last_error = 'Worker lease expired before completion',
+                        updated_at = ?
+                    WHERE issue_number IN ({placeholders})
+                    """,
+                    (now.isoformat(), *expired),
+                )
+        return expired
+
     def get(self, issue_number: int) -> JobState | None:
         with self._connect() as connection:
             row = connection.execute(

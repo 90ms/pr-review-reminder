@@ -36,6 +36,16 @@ class ConfigTests(unittest.TestCase):
                 }
             )
 
+    def test_lease_must_outlive_job_timeout(self) -> None:
+        with self.assertRaisesRegex(ConfigError, "must be greater"):
+            Config.from_env(
+                {
+                    "GITHUB_REPOSITORY": "90ms/pr-review-reminder",
+                    "JOB_TIMEOUT_SECONDS": "600",
+                    "LEASE_SECONDS": "600",
+                }
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
