@@ -3,10 +3,13 @@ from __future__ import annotations
 import tempfile
 import unittest
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pr_issue_worker.job_protocol import (
     JobProtocolError,
+    RunnerPhase,
+    RunnerProgress,
     RunnerRequest,
     RunnerResponse,
     new_job_id,
@@ -27,9 +30,18 @@ class JobProtocolTests(unittest.TestCase):
                 tests=("python -m unittest",),
                 docs=("docs/ISSUE_AUTOMATION.md",),
             )
+            now = datetime.now(UTC).isoformat()
+            progress = RunnerProgress(
+                request.job_id,
+                request.issue_number,
+                RunnerPhase.CODEX_RUNNING,
+                now,
+                now,
+            )
 
             request.write(root / "pending" / f"{request.job_id}.json")
             response.write(root / "results" / f"{request.job_id}.json")
+            progress.write(root / "progress" / f"{request.job_id}.json")
 
             self.assertEqual(
                 RunnerRequest.read(root / "pending" / f"{request.job_id}.json"),
@@ -38,6 +50,12 @@ class JobProtocolTests(unittest.TestCase):
             self.assertEqual(
                 RunnerResponse.read(root / "results" / f"{request.job_id}.json"),
                 response,
+            )
+            self.assertEqual(
+                RunnerProgress.read(
+                    root / "progress" / f"{request.job_id}.json"
+                ),
+                progress,
             )
 
     def test_rejects_workspace_traversal(self) -> None:

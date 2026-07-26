@@ -5,6 +5,8 @@ import os
 import re
 import uuid
 from dataclasses import asdict, dataclass
+from datetime import datetime
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -20,6 +22,12 @@ _SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 class JobProtocolError(ValueError):
     pass
+
+
+class RunnerPhase(StrEnum):
+    CLAIMED = "claimed"
+    CODEX_RUNNING = "codex_running"
+    RESULT_READY = "result_ready"
 
 
 @dataclass(frozen=True)
@@ -147,6 +155,56 @@ class RunnerResponse:
         _write_object_atomic(path, value)
 
 
+@dataclass(frozen=True)
+class RunnerProgress:
+    job_id: str
+    issue_number: int
+    phase: RunnerPhase
+    started_at: str
+    updated_at: str
+    schema_version: int = SCHEMA_VERSION
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> RunnerProgress:
+        try:
+            progress = cls(
+                job_id=str(value["job_id"]),
+                issue_number=int(value["issue_number"]),
+                phase=RunnerPhase(str(value["phase"])),
+                started_at=str(value["started_at"]),
+                updated_at=str(value["updated_at"]),
+                schema_version=int(value["schema_version"]),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise JobProtocolError(f"invalid runner progress: {error}") from error
+        progress.validate()
+        return progress
+
+    @classmethod
+    def read(cls, path: Path) -> RunnerProgress:
+        return cls.from_dict(_read_object(path))
+
+    def validate(self) -> None:
+        if self.schema_version != SCHEMA_VERSION:
+            raise JobProtocolError(
+                f"unsupported job schema version: {self.schema_version}"
+            )
+        if not _JOB_ID_PATTERN.fullmatch(self.job_id):
+            raise JobProtocolError("job_id must be a lowercase UUID")
+        if self.issue_number <= 0:
+            raise JobProtocolError("issue_number must be positive")
+        started_at = _parse_timestamp(self.started_at, "started_at")
+        updated_at = _parse_timestamp(self.updated_at, "updated_at")
+        if updated_at < started_at:
+            raise JobProtocolError("updated_at must not precede started_at")
+
+    def write(self, path: Path) -> None:
+        self.validate()
+        value = asdict(self)
+        value["phase"] = self.phase.value
+        _write_object_atomic(path, value)
+
+
 def new_job_id() -> str:
     return str(uuid.uuid4())
 
@@ -180,6 +238,16 @@ def _read_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise JobProtocolError(f"{path.name} must contain a JSON object")
     return value
+
+
+def _parse_timestamp(value: str, name: str) -> datetime:
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise JobProtocolError(f"{name} must be an ISO-8601 timestamp") from error
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise JobProtocolError(f"{name} must include a timezone")
+    return timestamp
 
 
 def _write_object_atomic(path: Path, value: dict[str, Any]) -> None:

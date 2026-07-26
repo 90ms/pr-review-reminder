@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,7 +14,13 @@ from pr_issue_worker.codex_runner import (
     CodexRunnerSettings,
 )
 from pr_issue_worker.config import ConfigError
-from pr_issue_worker.job_protocol import RunnerRequest, RunnerResponse, new_job_id
+from pr_issue_worker.job_protocol import (
+    RunnerPhase,
+    RunnerProgress,
+    RunnerRequest,
+    RunnerResponse,
+    new_job_id,
+)
 from pr_issue_worker.process import CommandResult
 
 
@@ -38,6 +46,18 @@ class _CommandRunnerStub:
             encoding="utf-8",
         )
         return CommandResult("", "", 0)
+
+
+class _BlockingCommandRunnerStub(_CommandRunnerStub):
+    def __init__(self):
+        super().__init__()
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def run(self, command, *, environment=None, **kwargs):
+        self.started.set()
+        self.release.wait(timeout=2)
+        return super().run(command, environment=environment, **kwargs)
 
 
 class CodexRunnerTests(unittest.TestCase):
@@ -92,6 +112,48 @@ class CodexRunnerTests(unittest.TestCase):
         )
         self.assertNotIn("SLACK_BOT_TOKEN", command_runner.environment)
         self.assertNotIn("GH_CONFIG_DIR", command_runner.environment)
+
+    def test_refreshes_progress_and_runner_heartbeat_during_codex(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = root / "queue"
+            workspaces = root / "workspaces"
+            repository = workspaces / "issue-2-test" / "repository"
+            (repository / ".git").mkdir(parents=True)
+            settings = CodexRunnerSettings.from_env(
+                {
+                    "CODEX_RUNNER_MODE": "outer-container",
+                    "RUNNER_QUEUE_PATH": str(queue),
+                    "WORKSPACE_PATH": str(workspaces),
+                    "RUNNER_HEARTBEAT_SECONDS": "0.1",
+                }
+            )
+            command_runner = _BlockingCommandRunnerStub()
+            job_runner = CodexJobRunner(settings, command_runner)
+            job_runner.prepare()
+            request = _request()
+            request.write(queue / "pending" / f"{request.job_id}.json")
+            thread = threading.Thread(target=job_runner.run_once)
+            thread.start()
+            self.assertTrue(command_runner.started.wait(timeout=1))
+            progress_path = queue / "progress" / f"{request.job_id}.json"
+            first = RunnerProgress.read(progress_path)
+            heartbeat = queue / "runner-heartbeat"
+            first_heartbeat = heartbeat.stat().st_mtime_ns
+
+            time.sleep(0.25)
+
+            second = RunnerProgress.read(progress_path)
+            second_heartbeat = heartbeat.stat().st_mtime_ns
+            command_runner.release.set()
+            thread.join(timeout=2)
+            final = RunnerProgress.read(progress_path)
+
+        self.assertEqual(first.phase, RunnerPhase.CODEX_RUNNING)
+        self.assertEqual(second.phase, RunnerPhase.CODEX_RUNNING)
+        self.assertGreater(second.updated_at, first.updated_at)
+        self.assertGreater(second_heartbeat, first_heartbeat)
+        self.assertEqual(final.phase, RunnerPhase.RESULT_READY)
 
 
 def _request() -> RunnerRequest:

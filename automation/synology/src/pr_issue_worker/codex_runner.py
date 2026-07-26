@@ -3,14 +3,18 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import ConfigError
 from .job_protocol import (
     JobProtocolError,
+    RunnerPhase,
+    RunnerProgress,
     RunnerRequest,
     RunnerResponse,
     resolve_workspace,
@@ -43,6 +47,7 @@ class CodexRunnerSettings:
     workspace_path: Path
     codex_bin: str
     poll_seconds: float
+    heartbeat_seconds: float
     execution_mode: str
 
     @classmethod
@@ -61,11 +66,20 @@ class CodexRunnerSettings:
             raise ConfigError("RUNNER_POLL_SECONDS must be a number") from error
         if poll_seconds < 0.1:
             raise ConfigError("RUNNER_POLL_SECONDS must be at least 0.1")
+        try:
+            heartbeat_seconds = float(
+                values.get("RUNNER_HEARTBEAT_SECONDS", "10")
+            )
+        except ValueError as error:
+            raise ConfigError("RUNNER_HEARTBEAT_SECONDS must be a number") from error
+        if heartbeat_seconds < 0.1:
+            raise ConfigError("RUNNER_HEARTBEAT_SECONDS must be at least 0.1")
         return cls(
             queue_path=Path(values.get("RUNNER_QUEUE_PATH", "/queue")),
             workspace_path=Path(values.get("WORKSPACE_PATH", "/workspaces")),
             codex_bin=values.get("CODEX_BIN", "codex"),
             poll_seconds=poll_seconds,
+            heartbeat_seconds=heartbeat_seconds,
             execution_mode=execution_mode,
         )
 
@@ -80,7 +94,7 @@ class CodexJobRunner:
         self.command_runner = command_runner
 
     def prepare(self) -> None:
-        for name in ("pending", "running", "results", "rejected"):
+        for name in ("pending", "running", "progress", "results", "rejected"):
             (self.settings.queue_path / name).mkdir(parents=True, exist_ok=True)
         self.settings.workspace_path.mkdir(parents=True, exist_ok=True)
         self._recover_interrupted_jobs()
@@ -112,12 +126,15 @@ class CodexJobRunner:
 
     def _execute_file(self, running: Path) -> None:
         request: RunnerRequest | None = None
+        started_at = _now()
         try:
             request = RunnerRequest.read(running)
-            response = self._execute(request)
+            self._write_progress(request, RunnerPhase.CLAIMED, started_at)
+            response = self._execute(request, started_at)
             response.write(
                 self.settings.queue_path / "results" / f"{request.job_id}.json"
             )
+            self._write_progress(request, RunnerPhase.RESULT_READY, started_at)
             running.unlink(missing_ok=True)
         except (JobProtocolError, OSError, TypeError, ValueError) as error:
             if request is not None:
@@ -130,12 +147,17 @@ class CodexJobRunner:
                     / "results"
                     / f"{request.job_id}.json"
                 )
+                self._write_progress(request, RunnerPhase.RESULT_READY, started_at)
                 running.unlink(missing_ok=True)
             else:
                 rejected = self.settings.queue_path / "rejected" / running.name
                 os.replace(running, rejected)
 
-    def _execute(self, request: RunnerRequest) -> RunnerResponse:
+    def _execute(
+        self,
+        request: RunnerRequest,
+        started_at: str,
+    ) -> RunnerResponse:
         workspace = resolve_workspace(
             self.settings.workspace_path, request.workspace_rel
         )
@@ -171,6 +193,15 @@ class CodexJobRunner:
             str(output_path),
             prompt,
         ]
+        stop_heartbeat = threading.Event()
+        self._write_progress(request, RunnerPhase.CODEX_RUNNING, started_at)
+        heartbeat = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(request, started_at, stop_heartbeat),
+            name=f"runner-heartbeat-{request.issue_number}",
+            daemon=True,
+        )
+        heartbeat.start()
         try:
             self.command_runner.run(
                 command,
@@ -204,6 +235,35 @@ class CodexJobRunner:
                 JobStatus.FAILED,
                 str(error),
             )
+        finally:
+            stop_heartbeat.set()
+            heartbeat.join(timeout=self.settings.heartbeat_seconds + 1)
+
+    def _heartbeat_loop(
+        self,
+        request: RunnerRequest,
+        started_at: str,
+        stop: threading.Event,
+    ) -> None:
+        while not stop.wait(self.settings.heartbeat_seconds):
+            self.touch_heartbeat()
+            self._write_progress(request, RunnerPhase.CODEX_RUNNING, started_at)
+
+    def _write_progress(
+        self,
+        request: RunnerRequest,
+        phase: RunnerPhase,
+        started_at: str,
+    ) -> None:
+        RunnerProgress(
+            job_id=request.job_id,
+            issue_number=request.issue_number,
+            phase=phase,
+            started_at=started_at,
+            updated_at=_now(),
+        ).write(
+            self.settings.queue_path / "progress" / f"{request.job_id}.json"
+        )
 
     def _recover_interrupted_jobs(self) -> None:
         running_dir = self.settings.queue_path / "running"
@@ -242,3 +302,7 @@ def _build_prompt(request: RunnerRequest) -> str:
         f"Branch: {request.branch}\n\n"
         f"Body:\n{request.issue_body}"
     )
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()

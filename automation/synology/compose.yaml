@@ -48,6 +48,7 @@ services:
       RUNNER_QUEUE_PATH: /queue
       WORKSPACE_PATH: /workspaces
       RUNNER_POLL_SECONDS: ${RUNNER_POLL_SECONDS:-1}
+      RUNNER_HEARTBEAT_SECONDS: ${RUNNER_HEARTBEAT_SECONDS:-10}
       HTTPS_PROXY: http://codex-egress:3128
       HTTP_PROXY: http://codex-egress:3128
       NO_PROXY: localhost,127.0.0.1
