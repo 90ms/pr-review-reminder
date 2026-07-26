@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .job_protocol import JobProtocolError, RunnerRequest, RunnerResponse
+from .job_protocol import (
+    JobProtocolError,
+    RunnerProgress,
+    RunnerRequest,
+    RunnerResponse,
+)
 
 
 class RunnerUnavailable(RuntimeError):
@@ -32,27 +38,49 @@ class FileJobClient:
         request: RunnerRequest,
         *,
         timeout_seconds: int,
+        progress_callback: Callable[[RunnerProgress], None] | None = None,
     ) -> RunnerResponse:
         self.assert_available()
         pending = self.queue_path / "pending" / f"{request.job_id}.json"
+        progress = self.queue_path / "progress" / f"{request.job_id}.json"
         result = self.queue_path / "results" / f"{request.job_id}.json"
         if pending.exists() or result.exists():
             raise JobProtocolError(f"job already exists: {request.job_id}")
         request.write(pending)
 
         deadline = time.monotonic() + timeout_seconds
+        last_progress: tuple[str, str] | None = None
         while time.monotonic() < deadline:
+            if progress.exists():
+                current = RunnerProgress.read(progress)
+                if current.job_id != request.job_id:
+                    raise JobProtocolError("runner progress job_id does not match")
+                signature = (current.phase.value, current.updated_at)
+                if signature != last_progress:
+                    last_progress = signature
+                    if progress_callback is not None:
+                        progress_callback(current)
             if result.exists():
                 response = RunnerResponse.read(result)
                 if response.job_id != request.job_id:
                     raise JobProtocolError("runner response job_id does not match")
                 result.unlink(missing_ok=True)
+                progress.unlink(missing_ok=True)
                 return response
             time.sleep(self.poll_seconds)
         raise RunnerTimedOut(
             f"runner did not return issue #{request.issue_number} within "
             f"{timeout_seconds} seconds"
         )
+
+    def read_progress(self, job_id: str) -> RunnerProgress | None:
+        progress = self.queue_path / "progress" / f"{job_id}.json"
+        if not progress.exists():
+            return None
+        current = RunnerProgress.read(progress)
+        if current.job_id != job_id:
+            raise JobProtocolError("runner progress job_id does not match")
+        return current
 
     def assert_available(self) -> None:
         heartbeat = self.queue_path / "runner-heartbeat"

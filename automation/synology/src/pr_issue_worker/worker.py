@@ -5,20 +5,21 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from .config import Config
 from .github import GitHubClient
-from .job_protocol import RunnerRequest, new_job_id
+from .job_protocol import RunnerPhase, RunnerProgress, RunnerRequest, new_job_id
 from .job_queue import FileJobClient
-from .models import Issue, JobResult, JobStatus, PullRequest
+from .models import Issue, JobPhase, JobResult, JobStatus, PullRequest
 from .process import (
     CommandError,
     CommandRunner,
     CommandTimeout,
     minimal_environment,
 )
-from .state import StateStore
+from .state import JobState, StateStore
 
 _TERMINAL_LABELS = ("codex-failed", "codex-blocked", "codex-pr-open")
 _TOKEN_PATTERN = re.compile(
@@ -50,6 +51,7 @@ class IssueWorker:
         approved_by: str,
         *,
         already_claimed: bool = False,
+        progress_callback: Callable[[JobState], None] | None = None,
     ) -> JobResult:
         if not already_claimed and not self.state.claim(
             issue_number, approved_by, self.config.lease_seconds
@@ -60,6 +62,11 @@ class IssueWorker:
                 "The issue is already running or already has an open PR.",
             )
 
+        self._report_progress(
+            issue_number,
+            JobPhase.PREPARING,
+            progress_callback,
+        )
         workspace: Path | None = None
         try:
             issue = self.github.get_issue(issue_number)
@@ -90,7 +97,13 @@ class IssueWorker:
             self._set_running_label(issue.number)
             workspace = self._prepare_workspace(issue, branch)
             base_sha = self._git(["rev-parse", "HEAD"], cwd=workspace).stdout.strip()
-            codex_result = self._run_codex(issue, workspace, base_sha, branch)
+            codex_result = self._run_codex(
+                issue,
+                workspace,
+                base_sha,
+                branch,
+                progress_callback,
+            )
             status = JobStatus(codex_result["status"])
             if status is JobStatus.BLOCKED:
                 return self._blocked(
@@ -103,6 +116,11 @@ class IssueWorker:
             if status is JobStatus.FAILED:
                 raise RuntimeError(str(codex_result["summary"]))
 
+            self._report_progress(
+                issue.number,
+                JobPhase.VALIDATING,
+                progress_callback,
+            )
             self._restore_repository_boundary(workspace, branch, base_sha)
             changed_paths = self._changed_paths(workspace, base_sha)
             protected = self._protected_changes(changed_paths)
@@ -148,6 +166,11 @@ class IssueWorker:
                     codex_result,
                 )
 
+            self._report_progress(
+                issue.number,
+                JobPhase.PUSHING,
+                progress_callback,
+            )
             self._git(
                 [
                     "-c",
@@ -158,6 +181,11 @@ class IssueWorker:
                     branch,
                 ],
                 cwd=workspace,
+            )
+            self._report_progress(
+                issue.number,
+                JobPhase.CREATING_PR,
+                progress_callback,
             )
             pull_request = self.github.create_draft_pr(
                 issue=issue,
@@ -233,6 +261,7 @@ class IssueWorker:
         workspace: Path,
         base_sha: str,
         branch: str,
+        progress_callback: Callable[[JobState], None] | None,
     ) -> dict[str, object]:
         if self.job_client is None:
             raise RuntimeError("Codex runner queue is not configured")
@@ -256,9 +285,20 @@ class IssueWorker:
             workspace_rel=workspace_rel,
             timeout_seconds=self.config.job_timeout_seconds,
         )
+        self._report_progress(
+            issue.number,
+            JobPhase.QUEUED,
+            progress_callback,
+            job_id=request.job_id,
+        )
         response = self.job_client.submit_and_wait(
             request,
             timeout_seconds=self.config.job_timeout_seconds + 60,
+            progress_callback=lambda progress: self._report_runner_progress(
+                issue.number,
+                progress,
+                progress_callback,
+            ),
         )
         return {
             "status": response.status.value,
@@ -267,6 +307,43 @@ class IssueWorker:
             "docs": list(response.docs),
             "risks": list(response.risks),
         }
+
+    def _report_runner_progress(
+        self,
+        issue_number: int,
+        progress: RunnerProgress,
+        callback: Callable[[JobState], None] | None,
+    ) -> None:
+        phases = {
+            RunnerPhase.CLAIMED: JobPhase.RUNNER_CLAIMED,
+            RunnerPhase.CODEX_RUNNING: JobPhase.CODEX_RUNNING,
+            RunnerPhase.RESULT_READY: JobPhase.RESULT_READY,
+        }
+        self._report_progress(
+            issue_number,
+            phases[progress.phase],
+            callback,
+            job_id=progress.job_id,
+            runner_updated_at=progress.updated_at,
+        )
+
+    def _report_progress(
+        self,
+        issue_number: int,
+        phase: JobPhase,
+        callback: Callable[[JobState], None] | None,
+        *,
+        job_id: str | None = None,
+        runner_updated_at: str | None = None,
+    ) -> None:
+        state = self.state.update_progress(
+            issue_number,
+            phase,
+            job_id=job_id,
+            runner_updated_at=runner_updated_at,
+        )
+        if callback is not None and state is not None:
+            callback(state)
 
     def _changed_paths(self, workspace: Path, base_sha: str) -> list[str]:
         committed = self._git(

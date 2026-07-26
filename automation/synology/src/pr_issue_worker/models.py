@@ -10,6 +10,18 @@ class JobStatus(StrEnum):
     FAILED = "failed"
 
 
+class JobPhase(StrEnum):
+    PREPARING = "preparing"
+    QUEUED = "queued"
+    RUNNER_CLAIMED = "runner_claimed"
+    CODEX_RUNNING = "codex_running"
+    RESULT_READY = "result_ready"
+    VALIDATING = "validating"
+    PUSHING = "pushing"
+    CREATING_PR = "creating_pr"
+    MONITORING_CI = "monitoring_ci"
+
+
 @dataclass(frozen=True)
 class Issue:
     number: int

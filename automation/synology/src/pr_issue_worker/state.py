@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from .models import JobPhase
+
 
 @dataclass(frozen=True)
 class JobState:
@@ -17,6 +19,11 @@ class JobState:
     last_error: str | None
     pr_number: int | None
     pr_url: str | None
+    phase: str | None
+    started_at: str | None
+    progress_updated_at: str | None
+    job_id: str | None
+    runner_updated_at: str | None
 
 
 class StateStore:
@@ -38,10 +45,31 @@ class StateStore:
                     last_error TEXT,
                     pr_number INTEGER,
                     pr_url TEXT,
+                    phase TEXT,
+                    started_at TEXT,
+                    progress_updated_at TEXT,
+                    job_id TEXT,
+                    runner_updated_at TEXT,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(issue_jobs)")
+            }
+            migrations = {
+                "phase": "TEXT",
+                "started_at": "TEXT",
+                "progress_updated_at": "TEXT",
+                "job_id": "TEXT",
+                "runner_updated_at": "TEXT",
+            }
+            for name, definition in migrations.items():
+                if name not in columns:
+                    connection.execute(
+                        f"ALTER TABLE issue_jobs ADD COLUMN {name} {definition}"
+                    )
 
     def record_notification(self, issue_number: int, message_ts: str) -> bool:
         now = _now()
@@ -94,22 +122,70 @@ class StateStore:
                     UPDATE issue_jobs
                     SET status = 'running', approved_by = ?,
                         attempts = attempts + 1, lease_until = ?,
-                        last_error = NULL, updated_at = ?
+                        last_error = NULL, phase = 'preparing',
+                        started_at = ?, progress_updated_at = ?,
+                        job_id = NULL, runner_updated_at = NULL,
+                        updated_at = ?
                     WHERE issue_number = ?
                     """,
-                    (approved_by, lease_until, now.isoformat(), issue_number),
+                    (
+                        approved_by,
+                        lease_until,
+                        now.isoformat(),
+                        now.isoformat(),
+                        now.isoformat(),
+                        issue_number,
+                    ),
                 )
             else:
                 connection.execute(
                     """
                     INSERT INTO issue_jobs (
                         issue_number, status, approved_by, attempts,
-                        lease_until, updated_at
-                    ) VALUES (?, 'running', ?, 1, ?, ?)
+                        lease_until, phase, started_at,
+                        progress_updated_at, updated_at
+                    ) VALUES (?, 'running', ?, 1, ?, 'preparing', ?, ?, ?)
                     """,
-                    (issue_number, approved_by, lease_until, now.isoformat()),
+                    (
+                        issue_number,
+                        approved_by,
+                        lease_until,
+                        now.isoformat(),
+                        now.isoformat(),
+                        now.isoformat(),
+                    ),
                 )
             return True
+
+    def update_progress(
+        self,
+        issue_number: int,
+        phase: JobPhase,
+        *,
+        job_id: str | None = None,
+        runner_updated_at: str | None = None,
+    ) -> JobState | None:
+        now = _now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE issue_jobs
+                SET phase = ?, progress_updated_at = ?,
+                    job_id = COALESCE(?, job_id),
+                    runner_updated_at = COALESCE(?, runner_updated_at),
+                    updated_at = ?
+                WHERE issue_number = ? AND status = 'running'
+                """,
+                (
+                    phase.value,
+                    now,
+                    job_id,
+                    runner_updated_at,
+                    now,
+                    issue_number,
+                ),
+            )
+        return self.get(issue_number)
 
     def finish(
         self,
@@ -167,7 +243,8 @@ class StateStore:
             row = connection.execute(
                 """
                 SELECT issue_number, status, approved_by, attempts, message_ts,
-                       lease_until, last_error, pr_number, pr_url
+                       lease_until, last_error, pr_number, pr_url, phase,
+                       started_at, progress_updated_at, job_id, runner_updated_at
                 FROM issue_jobs WHERE issue_number = ?
                 """,
                 (issue_number,),

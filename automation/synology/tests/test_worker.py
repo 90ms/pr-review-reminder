@@ -66,12 +66,18 @@ class WorkerTests(unittest.TestCase):
             state.initialize()
             github = _GitHubStub(issue)
             worker = _PreparedWorker(config, state, github, CommandRunner(), root)
+            phases = []
 
-            result = worker.run(issue.number, "U123")
+            result = worker.run(
+                issue.number,
+                "U123",
+                progress_callback=lambda job: phases.append(job.phase),
+            )
 
         self.assertEqual(result.status, "blocked")
         self.assertIn("Protected paths", result.summary)
         self.assertEqual(github.added_labels, [])
+        self.assertEqual(phases, ["preparing", "validating"])
 
     def test_known_codex_token_is_detected_in_generated_change(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -236,6 +242,7 @@ class _PreparedWorker(IssueWorker):
         workspace: Path,
         base_sha: str,
         branch: str,
+        progress_callback,
     ) -> dict[str, object]:
         return {
             "status": "completed",

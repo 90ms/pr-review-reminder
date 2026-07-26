@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from pr_issue_worker.models import JobPhase
 from pr_issue_worker.state import StateStore
 
 
@@ -25,6 +27,56 @@ class StateStoreTests(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(state.status, "running")
         self.assertEqual(state.attempts, 1)
+        self.assertEqual(state.phase, JobPhase.PREPARING)
+        self.assertIsNotNone(state.started_at)
+
+    def test_persists_controller_and_runner_progress(self) -> None:
+        self.assertTrue(self.store.claim(17, "U123", 300))
+
+        state = self.store.update_progress(
+            17,
+            JobPhase.CODEX_RUNNING,
+            job_id="00000000-0000-0000-0000-000000000017",
+            runner_updated_at="2026-07-26T09:00:00+00:00",
+        )
+
+        self.assertEqual(state.phase, JobPhase.CODEX_RUNNING)
+        self.assertEqual(
+            state.job_id,
+            "00000000-0000-0000-0000-000000000017",
+        )
+        self.assertEqual(
+            state.runner_updated_at,
+            "2026-07-26T09:00:00+00:00",
+        )
+
+    def test_initialization_migrates_existing_state_database(self) -> None:
+        legacy_path = Path(self.temporary_directory.name) / "legacy.sqlite3"
+        with sqlite3.connect(legacy_path) as connection:
+            connection.execute(
+                """
+                CREATE TABLE issue_jobs (
+                    issue_number INTEGER PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    approved_by TEXT,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    message_ts TEXT,
+                    lease_until TEXT,
+                    last_error TEXT,
+                    pr_number INTEGER,
+                    pr_url TEXT,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        migrated = StateStore(legacy_path)
+
+        migrated.initialize()
+        self.assertTrue(migrated.claim(18, "U123", 300))
+
+        state = migrated.get(18)
+        self.assertEqual(state.phase, JobPhase.PREPARING)
+        self.assertIsNotNone(state.started_at)
 
     def test_failed_job_can_be_claimed_again(self) -> None:
         self.assertTrue(self.store.claim(13, "U123", 300))

@@ -4,9 +4,12 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pr_issue_worker.job_protocol import (
+    RunnerPhase,
+    RunnerProgress,
     RunnerRequest,
     RunnerResponse,
     new_job_id,
@@ -26,11 +29,20 @@ class FileJobClientTests(unittest.TestCase):
                 poll_seconds=0.01,
             )
             request = _request()
+            phases = []
 
             def complete() -> None:
                 pending = queue / "pending" / f"{request.job_id}.json"
                 while not pending.exists():
                     time.sleep(0.005)
+                now = datetime.now(UTC).isoformat()
+                RunnerProgress(
+                    request.job_id,
+                    request.issue_number,
+                    RunnerPhase.RESULT_READY,
+                    now,
+                    now,
+                ).write(queue / "progress" / f"{request.job_id}.json")
                 RunnerResponse(
                     request.job_id,
                     JobStatus.COMPLETED,
@@ -39,11 +51,19 @@ class FileJobClientTests(unittest.TestCase):
 
             thread = threading.Thread(target=complete)
             thread.start()
-            response = client.submit_and_wait(request, timeout_seconds=2)
+            response = client.submit_and_wait(
+                request,
+                timeout_seconds=2,
+                progress_callback=lambda progress: phases.append(progress.phase),
+            )
             thread.join()
 
         self.assertEqual(response.status, JobStatus.COMPLETED)
         self.assertEqual(response.summary, "done")
+        self.assertEqual(phases, [RunnerPhase.RESULT_READY])
+        self.assertFalse(
+            (queue / "progress" / f"{request.job_id}.json").exists()
+        )
 
     def test_rejects_missing_runner_heartbeat(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

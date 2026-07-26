@@ -131,13 +131,14 @@ class CodexJobRunner:
             request = RunnerRequest.read(running)
             self._write_progress(request, RunnerPhase.CLAIMED, started_at)
             response = self._execute(request, started_at)
+            self._write_progress(request, RunnerPhase.RESULT_READY, started_at)
             response.write(
                 self.settings.queue_path / "results" / f"{request.job_id}.json"
             )
-            self._write_progress(request, RunnerPhase.RESULT_READY, started_at)
             running.unlink(missing_ok=True)
         except (JobProtocolError, OSError, TypeError, ValueError) as error:
             if request is not None:
+                self._write_progress(request, RunnerPhase.RESULT_READY, started_at)
                 RunnerResponse(
                     request.job_id,
                     JobStatus.FAILED,
@@ -147,7 +148,6 @@ class CodexJobRunner:
                     / "results"
                     / f"{request.job_id}.json"
                 )
-                self._write_progress(request, RunnerPhase.RESULT_READY, started_at)
                 running.unlink(missing_ok=True)
             else:
                 rejected = self.settings.queue_path / "rejected" / running.name
