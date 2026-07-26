@@ -49,6 +49,23 @@ GitHub Issues <──── labels ── Automation Service ── Socket Mode 
 Slack은 Socket Mode로 연결한다. 따라서 NAS에 공개 HTTP endpoint나 포트
 포워딩을 만들 필요가 없다.
 
+## Controller–Runner 작업 프로토콜
+
+Synology에서 Controller와 Codex Runner는 네트워크 API나 Docker socket 대신
+`DATA_DIR` 아래의 파일 큐로 통신한다. Controller는 승인 시 최신 `main`을 clone하고
+다음 값이 포함된 버전 지정 JSON 요청을 atomic rename으로 게시한다.
+
+- 임의 UUID 작업 ID와 프로토콜 버전
+- 저장소, 이슈 snapshot, 승인자
+- 시작 base SHA와 허용된 작업 branch
+- 공유 workspace의 정규화된 상대 경로
+- 작업 timeout
+
+Runner는 상대 경로가 workspace root 밖으로 나가지 않는지 다시 검증하고, 구조화된
+완료·실패·차단 결과만 별도 결과 디렉터리에 atomic rename으로 기록한다. 이슈 본문은
+공개 GitHub에서 읽은 신뢰할 수 없는 요구 사항이며 프로토콜이나 저장소 지침을
+덮어쓸 수 없다. 큐에는 인증 정보나 환경 변수를 기록하지 않는다.
+
 ## 상태 모델
 
 | GitHub 라벨 | 의미 |
