@@ -15,6 +15,12 @@ private final class AppStateMemoryHistoryPersistence: HistoryPersisting, @unchec
     func write(_ data: Data) throws { self.data = data }
 }
 
+private final class AppStateMemoryFeedbackSeenPersistence: FeedbackSeenPersisting, @unchecked Sendable {
+    var data: Data?
+    func read() throws -> Data? { data }
+    func write(_ data: Data) throws { self.data = data }
+}
+
 private final class DetailAttemptCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
@@ -91,6 +97,9 @@ final class AppStateTests: XCTestCase {
     private func makeState(
         settings: AppSettings = AppSettings(notificationsEnabled: false),
         history: HistoryStore = HistoryStore(persistence: AppStateMemoryHistoryPersistence()),
+        feedbackSeenStore: FeedbackSeenStore = FeedbackSeenStore(
+            persistence: AppStateMemoryFeedbackSeenPersistence()
+        ),
         scheduleRunStore: ScheduleRunStore = ScheduleRunStore(
             store: AppStateMemoryKeyValueStore(),
             key: "test.schedule"
@@ -117,6 +126,7 @@ final class AppStateTests: XCTestCase {
             runner: runner,
             settingsStore: settingsStore,
             history: history,
+            feedbackSeenStore: feedbackSeenStore,
             scheduleRunStore: scheduleRunStore,
             autoBootstrap: false
         )
@@ -140,6 +150,22 @@ final class AppStateTests: XCTestCase {
     nonisolated fileprivate static func detailsJSON(sha: String) -> String {
         """
         {"body":"PR body","headRefOid":"\(sha)","additions":2,"deletions":1}
+        """
+    }
+
+    nonisolated fileprivate static func feedbackDetailsJSON(reviewID: String = "r1") -> String {
+        """
+        {
+          "reviewDecision": "CHANGES_REQUESTED",
+          "reviews": [
+            {
+              "id": "\(reviewID)",
+              "state": "CHANGES_REQUESTED",
+              "submittedAt": "2026-07-25T00:00:00Z",
+              "author": {"login": "reviewer-two"}
+            }
+          ]
+        }
         """
     }
 
@@ -168,7 +194,13 @@ final class AppStateTests: XCTestCase {
     func testRefreshPopulatesAwaitingPullRequests() async {
         let (state, _) = await makeState { command in
             if command.arguments.first == "search" {
+                if command.arguments.contains("--author=@me") {
+                    return CommandResult(exitCode: 0, stdout: Self.searchJSON(title: "My PR"), stderr: "")
+                }
                 return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(exitCode: 0, stdout: Self.feedbackDetailsJSON(), stderr: "")
             }
             if command.arguments.contains("--jq") {
                 return CommandResult(exitCode: 0, stdout: "uncached-sha\n", stderr: "")
@@ -179,10 +211,71 @@ final class AppStateTests: XCTestCase {
         await state.refresh()
 
         XCTAssertEqual(state.items.map(\.id), ["acme/widgets#42"])
+        XCTAssertEqual(state.feedbackItems.map(\.id), ["acme/widgets#42"])
+        XCTAssertEqual(state.feedbackItems.first?.status, .changesRequested)
+        XCTAssertNil(state.feedbackError)
         XCTAssertEqual(state.items.first?.state, .idle)
         XCTAssertNil(state.lastError)
         XCTAssertNotNil(state.lastRun)
         XCTAssertFalse(state.isRefreshing)
+    }
+
+    func testFeedbackRefreshFailurePreservesExistingFeedbackAndReviewList() async {
+        let (state, runner) = await makeState { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(exitCode: 0, stdout: Self.feedbackDetailsJSON(), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "uncached-sha\n", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+        await state.refresh()
+        XCTAssertEqual(state.feedbackItems.count, 1)
+
+        runner.responder = { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(title: "Still visible"), stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(exitCode: 1, stdout: "", stderr: "feedback failed")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "uncached-sha\n", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+        await state.refresh()
+
+        XCTAssertEqual(state.items.first?.pr.title, "Still visible")
+        XCTAssertEqual(state.feedbackItems.count, 1)
+        XCTAssertTrue(state.feedbackError?.contains("feedback failed") == true)
+    }
+
+    func testFeedbackSeenStoreSuppressesDuplicateNewFeedbackCount() async {
+        let persistence = AppStateMemoryFeedbackSeenPersistence()
+        let seen = FeedbackSeenStore(persistence: persistence)
+        let (state, _) = await makeState(feedbackSeenStore: seen) { command in
+            if command.arguments.first == "search" {
+                return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
+            }
+            if command.arguments.prefix(2) == ["pr", "view"] {
+                return CommandResult(exitCode: 0, stdout: Self.feedbackDetailsJSON(reviewID: "r-stable"), stderr: "")
+            }
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "uncached-sha\n", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refresh()
+        XCTAssertEqual(state.feedbackItems.first?.newFeedbackCount, 1)
+
+        await state.refresh()
+        XCTAssertEqual(state.feedbackItems.first?.newFeedbackCount, 0)
     }
 
     func testScheduledRefreshPersistsSuccessfulRun() async {

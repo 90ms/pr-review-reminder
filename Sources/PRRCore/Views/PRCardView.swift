@@ -119,3 +119,80 @@ struct PRCardView: View {
         .font(.caption)
     }
 }
+
+struct PRFeedbackCardView: View {
+    @EnvironmentObject var app: AppState
+    let item: PRFeedbackItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header
+            HStack(spacing: 8) {
+                Label(statusText, systemImage: statusIcon)
+                    .foregroundStyle(statusColor)
+                Label("\(item.newFeedbackCount)", systemImage: "bell.badge")
+                Label("\(item.feedbackCount)", systemImage: "text.bubble")
+                Spacer()
+                Button { open() } label: { Image(systemName: "arrow.up.forward.square") }
+                    .buttonStyle(.borderless)
+                    .help(app.l("open_github"))
+                    .accessibilityLabel(app.l("open_github"))
+            }
+            .font(.caption)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(item.pr.repository).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                Text("#\(item.pr.number)").font(.caption.monospaced()).foregroundStyle(.secondary)
+            }
+            Text(item.pr.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+            Label(
+                "\(item.latestReview.reviewer) - \(item.latestReview.submittedAt.formatted(date: .abbreviated, time: .shortened))",
+                systemImage: "person.crop.circle.badge.exclamationmark"
+            )
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var statusText: String {
+        switch item.status {
+        case .changesRequested:
+            app.l("feedback_changes_requested")
+        case .commented:
+            app.l("feedback_commented")
+        case .awaitingApproval:
+            app.l("feedback_awaiting_approval")
+        }
+    }
+
+    private var statusIcon: String {
+        switch item.status {
+        case .changesRequested: return "exclamationmark.triangle"
+        case .commented: return "text.bubble"
+        case .awaitingApproval: return "clock"
+        }
+    }
+
+    private var statusColor: Color {
+        switch item.status {
+        case .changesRequested: return .orange
+        case .commented: return .blue
+        case .awaitingApproval: return .secondary
+        }
+    }
+
+    private func open() {
+        #if canImport(AppKit)
+        if let url = URL(string: item.pr.url) {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
+    }
+}
