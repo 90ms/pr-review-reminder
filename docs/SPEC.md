@@ -3,7 +3,7 @@
 > macOS 메뉴바에서 리뷰 요청을 모으고, 사용자의 로컬 `claude` 또는 `codex`
 > CLI로 리뷰 초안을 만든 뒤, 사용자가 확인한 내용만 GitHub에 게시한다.
 
-- 기준일: 2026-07-24
+- 기준일: 2026-07-26
 - 대상 플랫폼: macOS 14+
 - 문서 성격: 현재 구현의 계약. 향후 작업은 [`tasks/plan.md`](../tasks/plan.md)에 둔다.
 
@@ -242,6 +242,9 @@ swift test
 
 ## 8. 현재 제약과 위험
 
+- 현재 PR 인박스는 `review-requested:@me`만 수집한다. 내가 작성한 PR에 도착한
+  미승인 리뷰 피드백 인박스는 [이슈 #4](https://github.com/90ms/pr-review-reminder/issues/4)의
+  후속 기능이며 아직 현재 제품 계약에 포함되지 않는다.
 - 히스토리는 사용자가 제어할 수 있지만, 활성화하면 PR 본문과 전체 diff를 로컬 JSON에 저장한다.
 - GitHub Search API는 한 쿼리에서 최대 1,000개 결과만 제공한다.
 - Codex 비용은 CLI가 보고한 실제 비용이 아니라 사용자가 입력한 단가 기반 추정이다.

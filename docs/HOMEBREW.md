@@ -25,7 +25,7 @@ Formula는 태그 source tarball을 SHA-256으로 검증하고 Swift release bui
 ## 현재 배포 상태
 
 공개 [`90ms/homebrew-tap`](https://github.com/90ms/homebrew-tap)의 Formula는
-`v0.2.2`를 제공한다. tap CI에서 source install, `brew test`,
+`v0.3.1`을 제공한다. tap CI에서 source install, `brew test`,
 `brew audit --strict`를 통과했다.
 
 ## 관리자의 Formula 갱신
@@ -33,7 +33,7 @@ Formula는 태그 source tarball을 SHA-256으로 검증하고 Swift release bui
 새 릴리스 태그와 source tarball SHA를 준비한 뒤 Formula를 렌더링한다.
 
 ```bash
-version=0.2.2
+version=0.3.1
 curl -L \
   "https://github.com/90ms/pr-review-reminder/archive/refs/tags/v${version}.tar.gz" \
   -o "/tmp/pr-review-reminder-${version}.tar.gz"
@@ -75,7 +75,8 @@ brew upgrade pr-review-reminder
 앱의 **설정 → 업데이트**에서도 같은 Formula의 현재/최신 버전을 확인하고 업데이트할 수
 있다. 앱은 자동 업데이트하지 않으며 사용자가 설치 버튼을 누른 경우에만
 `brew upgrade 90ms/tap/pr-review-reminder`를 실행한다. 진행 단계와 실패 명령을
-표시하고 취소를 지원하며, 완료 후 **지금 다시 시작**으로 새 앱을 연다.
+표시하고 취소를 지원한다. 완료되면 새 앱을 실행하고 기존 인스턴스를 종료하며,
+재실행 실패 시 **지금 다시 시작**으로 다시 시도할 수 있다.
 
 제거:
 

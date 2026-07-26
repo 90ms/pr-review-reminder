@@ -59,6 +59,10 @@ AI가 만든 내용은 초안입니다. 코드와 라인 위치를 검증하고 
 배포는 Homebrew source build를 우선하며 태그에는 ad-hoc ZIP과 checksum을 제공할 수
 있습니다. Developer ID를 설정한 경우 같은 workflow가 서명과 Apple 공증을 추가합니다.
 
+현재 인박스는 내가 리뷰어로 요청된 PR을 대상으로 한다. 내가 작성한 PR에 도착한
+미승인 리뷰 피드백은 별도 인박스로 제공하는 방향을
+[이슈 #4](https://github.com/90ms/pr-review-reminder/issues/4)에서 설계하고 있다.
+
 ### 더 알아보기
 
 - [제품 명세와 아키텍처](SPEC.md)

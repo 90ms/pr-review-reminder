@@ -1,6 +1,6 @@
 # 실행 계획 — PR Review Reminder
 
-> 상태 기준일: 2026-07-24. 완료된 구현과 남은 운영 작업을 구분한다.
+> 상태 기준일: 2026-07-26. 완료된 구현과 남은 운영 작업을 구분한다.
 
 기준 계약은 [`docs/SPEC.md`](../docs/SPEC.md)다. 모든 GitHub 쓰기는 사용자의
 명시적 액션으로만 시작하며 테스트와 CI에서는 실제 게시하지 않는다.
@@ -19,7 +19,7 @@
 | UI | 긴 줄 가로 스크롤, 동적 제목, 앱 아이콘, 다음 실행, 기본 접근성 label | build + 수동 확인 대상 |
 | 동시성 | Swift 6 language mode | macOS 15 CI build/test/bundle |
 | 배포 기반 | ad-hoc ZIP/checksum과 선택적 Developer ID 서명·공증 workflow | main CI |
-| Homebrew 배포 | 공개 tap, 0.2.2 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
+| Homebrew 배포 | 공개 tap, 0.3.1 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
 | 최신 릴리스 | 0.3.1 ad-hoc ZIP/checksum과 Homebrew source 설치 | Release workflow + tap CI |
 | 상세 화면 | 리뷰·변경 내용·나란히 레이아웃, diff 오류·빈 결과·재시도 상태 | AppState 테스트 + main CI |
 | 업데이트 UX | 단계별 상태·실패 원인, 프로세스 취소, 링크 갱신, 즉시 재시작 | 서비스 테스트 + main CI |
@@ -29,6 +29,8 @@
 | 예약 실행 이력 | 최근 20건 성공·실패 보존, 설정 표시, 실패 알림 | 저장소/AppState 테스트 + main CI |
 | macOS 운영 | 로그인 시 실행, 진행 중 작업 종료 확인 | main CI + macOS 수동 체크리스트 |
 | 릴리스 연계 | 태그 릴리스 후 검토 가능한 tap Formula PR 생성 | Release/tap CI |
+| 충돌 진단 | 비정상 종료 감지, 중복 실행 제외, 사용자 동의형 이슈 초안 | 저장소 테스트 + main CI |
+| 릴리스 스킬 | 버전 준비, 승인 게이트, Release와 tap 검증 절차 | skill validator + main CI |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
@@ -44,6 +46,27 @@
 
 체크 항목과 증적 위치는
 [`docs/MACOS_VALIDATION.md`](../docs/MACOS_VALIDATION.md)에 유지한다.
+
+### P1 — 내가 작성한 PR의 피드백 인박스
+
+현재 목록은 `review-requested:@me`인 열린 PR만 다룬다. 다음 제품 기능은
+[이슈 #4](https://github.com/90ms/pr-review-reminder/issues/4)를 기준으로, 내가
+작성한 PR에 정식 리뷰가 도착했지만 GitHub의 최종 `reviewDecision`이 아직
+`APPROVED`가 아닌 항목을 별도 인박스로 제공한다.
+
+권장 MVP:
+
+- `author:@me`, 열린 PR, 정식 review 1건 이상, `reviewDecision != APPROVED`
+- 기존 “내가 리뷰할 PR”과 별도 탭 또는 섹션
+- 변경 요청, 코멘트 도착, 승인 대기 상태 구분
+- 새 review ID/시각을 기준으로 중복 없는 알림
+- 첫 버전은 읽기 전용이며 자동 응답이나 GitHub 쓰기를 추가하지 않음
+
+구현 전 결정할 항목은 일반 issue comment와 봇 리뷰의 포함 여부, 탭/섹션 UI,
+중복 항목 처리 방식이다.
+
+완료 조건: 두 인박스를 명확히 구분하고, 실패 시 기존 결과를 보존하며, 새로운
+피드백 알림을 같은 이벤트에 중복 발송하지 않는다.
 
 ## 커밋·검증 원칙
 

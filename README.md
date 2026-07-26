@@ -217,6 +217,9 @@ Scripts/             앱 패키징, launcher, Formula renderer
 
 ## 알려진 제약
 
+- 현재는 내가 리뷰어로 요청된 PR만 표시합니다. 내가 작성한 PR의 미승인 리뷰
+  피드백 인박스는 [이슈 #4](https://github.com/90ms/pr-review-reminder/issues/4)에서
+  설계 중입니다.
 - 스케줄은 앱이 실행 중일 때만 동작하며 별도 background daemon은 없습니다.
 - 한 GitHub Search 쿼리는 API 제한에 따라 최대 1,000건을 조회합니다.
 - Codex 비용은 실제 청구액이 아니라 설정한 모델 단가와 보고 토큰을 이용한 추정입니다.
