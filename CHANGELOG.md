@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Synology image now installs GitHub CLI from its official signed apt
   repository and verifies persistent headless-login support instead of using
   Debian's outdated community package.
+- The container now overrides the host-side `GH_CONFIG_DIR` mount source with
+  its in-container path so `gh` can find the persisted login.
 
 ## [0.3.1] - 2026-07-24
 

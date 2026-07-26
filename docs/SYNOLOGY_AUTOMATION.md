@@ -111,6 +111,10 @@ docker run --rm -it \
 실제 경로가 다르면 `.env`의 `GH_CONFIG_DIR`, `CODEX_HOME_DIR`를 변경한다. 토큰이나
 인증 JSON을 저장소, Slack, GitHub 이슈에 붙여 넣지 않는다.
 
+`.env`의 `GH_CONFIG_DIR`는 NAS host의 bind-mount 원본 경로다. Compose는 컨테이너
+내부에서 이 값을 `/home/worker/.config/gh`로 덮어써 `gh`가 mount된 `hosts.yml`을
+읽도록 한다.
+
 ## 3. 설정 파일과 데이터 경로 준비
 
 ```bash
@@ -237,6 +241,7 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
 ### clone은 되지만 push가 실패함
 
 - `gh` mount 경로와 `gh auth status`를 확인한다.
+- Compose 컨테이너 안에서 `GH_CONFIG_DIR`가 `/home/worker/.config/gh`인지 확인한다.
 - 임시 로그인 컨테이너에서는 `--insecure-storage`를 사용했는지 확인한다. 사용하지
   않으면 token이 영속 NAS volume이 아닌 일회성 keyring에 저장될 수 있다.
 - GitHub 계정에 저장소 push 권한이 있는지 확인한다.

@@ -17,6 +17,7 @@ services:
       STATE_PATH: /data/state.sqlite3
       WORKSPACE_PATH: /data/workspaces
       CODEX_HOME: /home/worker/.codex
+      GH_CONFIG_DIR: /home/worker/.config/gh
     volumes:
       - "${DATA_DIR:?Set DATA_DIR}:/data"
       - "${GH_CONFIG_DIR:?Set GH_CONFIG_DIR}:/home/worker/.config/gh:ro"
