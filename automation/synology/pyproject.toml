@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pr-review-issue-worker"
+version = "0.1.0"
+description = "Synology worker for approved PR Review Reminder GitHub issues"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+pr-issue-worker = "pr_issue_worker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

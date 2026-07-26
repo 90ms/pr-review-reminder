@@ -59,7 +59,8 @@ evidence needed for a maintainer decision.
 
 ## Completion Report
 
-End with a compact machine-readable summary in this exact shape:
+When the caller supplies an output schema, return data matching that schema. Otherwise end with a
+compact machine-readable summary in this exact shape:
 
 ```text
 STATUS: completed|blocked|failed
