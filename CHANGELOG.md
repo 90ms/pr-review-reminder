@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A repository-local `$implement-github-issue` skill for implementing an
+  explicitly approved issue with tests, documentation, and reviewable commits.
+- An optional Synology worker that scans labeled issues, requests approval with
+  a Slack Socket Mode button, runs the locally authenticated Codex CLI in an
+  isolated checkout, and opens a Draft PR.
+- SQLite leases, protected-path checks, timeout recovery, CI result
+  notifications, dry-run mode, Docker Compose deployment, and NAS setup
+  documentation for the issue worker.
+
 ## [0.3.1] - 2026-07-24
 
 ### Changed

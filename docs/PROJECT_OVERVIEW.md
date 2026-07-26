@@ -63,8 +63,16 @@ AI가 만든 내용은 초안입니다. 코드와 라인 위치를 검증하고 
 미승인 리뷰 피드백은 별도 인박스로 제공하는 방향을
 [이슈 #4](https://github.com/90ms/pr-review-reminder/issues/4)에서 설계하고 있다.
 
+### 유지보수자용 이슈 자동화
+
+앱 제품과 분리된 선택적 Synology 워커는 `codex-ready` 이슈를 Slack에 알리고,
+허용된 사용자가 버튼으로 승인한 경우에만 NAS의 Codex CLI로 작업해 Draft PR을
+만든다. 자동 병합이나 GitHub review는 수행하지 않으며, 공개 이슈 입력과 로컬 Codex
+인증을 함께 사용하는 위험 때문에 격리·보호 경로·dry-run을 기본 운영 경계로 둔다.
+
 ### 더 알아보기
 
 - [제품 명세와 아키텍처](SPEC.md)
+- [Synology 이슈 자동화 설정](SYNOLOGY_AUTOMATION.md)
 - [개선 로드맵](../tasks/plan.md)
 - [빌드·실행과 설정](../README.md)

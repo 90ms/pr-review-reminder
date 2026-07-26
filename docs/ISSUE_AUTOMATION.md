@@ -92,9 +92,11 @@ codex-ready
   `codex/issue-<number>-*` 원격 브랜치를 확인한다.
 - 각 실행은 NAS 데이터 볼륨 아래의 새 임시 디렉터리에서 최신 `origin/main`을
   clone한다. 앱 저장소 자체나 이전 실행 디렉터리를 재사용하지 않는다.
-- 성공한 작업 디렉터리는 기본적으로 정리하고, 실패한 디렉터리는 제한된 기간 동안
-  진단용으로 보존한다.
+- 성공한 작업 디렉터리는 기본적으로 정리하고, 실패한 디렉터리는 운영자가 확인하고
+  정리할 때까지 진단용으로 보존한다.
 - 프로세스 timeout 후 Codex와 자식 프로세스를 종료하고 실패 상태로 전환한다.
+- 서비스가 중단되어 lease가 만료되면 다음 스캔에서 `codex-failed`로 복구하고 기존
+  Slack 메시지에 **재시도** 버튼을 표시한다.
 
 GitHub 라벨 변경은 분산 트랜잭션이 아니므로 여러 NAS 인스턴스를 동시에 실행하지
 않는다. 단일 서비스와 영속 SQLite lease가 지원 범위다.
@@ -147,8 +149,8 @@ GITHUB_REPOSITORY=90ms/pr-review-reminder
 ```
 
 `gh`와 `codex`의 인증 디렉터리는 자동화 전용 NAS 사용자만 읽을 수 있어야 한다.
-컨테이너를 사용할 경우 읽기 전용 mount를 우선하고, 작업 볼륨과 상태 DB만 쓰기
-가능하게 둔다.
+컨테이너에서는 `gh` 설정을 읽기 전용으로 mount한다. Codex 인증 저장소는 세션 갱신을
+위해 쓰기 가능해야 하므로 별도 경로로 제한하고 다른 NAS 데이터는 mount하지 않는다.
 
 ## 장애 처리
 
@@ -162,13 +164,13 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 - push/PR 실패: 로컬 결과를 보존하고 `codex-failed`로 전환한다.
 - CI 실패: PR은 유지하며 Slack에 실패한 check 링크를 알린다.
 
-## 구현 단계
+## 구현 상태
 
-1. 운영 계약과 상태 모델 문서화
-2. `$implement-github-issue` 저장소 스킬 추가
-3. 설정, GitHub gateway, SQLite 상태와 작업 큐 구현
-4. Slack Socket Mode 알림과 승인 버튼 구현
-5. Codex worker, Draft PR 생성과 CI 감시 구현
-6. Docker/Compose와 Synology Task Scheduler 설치 흐름 추가
-7. 단위 테스트, dry-run 검증과 사용자 문서 최신화
-
+- `$implement-github-issue` 저장소 스킬과 구조화 완료 보고
+- 설정, GitHub CLI gateway, SQLite lease와 단일 작업 큐
+- Slack Socket Mode 알림, 허용 사용자 승인과 실패 재시도
+- 격리 clone, Codex timeout, 보호 경로 검사, branch push와 Draft PR
+- GitHub check 감시와 Slack 결과 갱신
+- 만료 lease 복구와 중복 알림·중복 실행 방지
+- Docker/Compose, Slack manifest, 라벨 설정 스크립트와 Synology 운영 가이드
+- Python 단위 테스트와 GitHub Actions 자동 검증

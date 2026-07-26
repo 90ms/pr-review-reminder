@@ -189,6 +189,23 @@ OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.3.1 BUILD_NUMBER=31 \
   ./Scripts/build-app.sh
 ```
 
+## 선택적 이슈 구현 자동화
+
+유지보수자는 앱과 별도로 Synology NAS에서 승인 기반 이슈 워커를 운영할 수 있습니다.
+`codex-ready` 이슈를 Slack에 알리고, 허용된 사용자가 **구현 시작**을 누른 경우에만
+NAS의 Codex CLI가 최신 `main`에서 구현·테스트·문서 갱신을 수행해 Draft PR을
+생성합니다.
+
+```text
+codex-ready issue → Slack 승인 → 격리된 Codex 작업 → Draft PR → macOS CI 알림
+```
+
+자동 병합·review·approval·릴리스는 수행하지 않습니다. 실제 토큰과 CLI 인증은 NAS에만
+두며 공개 저장소에는 Docker/Compose 예제와 스킬, 테스트만 포함합니다. 설치 전에는
+[운영 계약](docs/ISSUE_AUTOMATION.md)과
+[Synology 설정 가이드](docs/SYNOLOGY_AUTOMATION.md)의 공개 이슈 및 Codex 인증
+주의사항을 확인하세요.
+
 ## 아키텍처
 
 ```mermaid
@@ -213,6 +230,8 @@ Sources/
   PRReviewReminder/  @main 앱 진입점과 --doctor
 Tests/               단위·오케스트레이션·스크립트 테스트
 Scripts/             앱 패키징, launcher, Formula renderer
+.agents/skills/      릴리스와 승인된 이슈 구현 Codex workflow
+automation/synology/ 선택적 Slack 승인·Codex Draft PR 워커
 ```
 
 ## 알려진 제약
@@ -233,6 +252,8 @@ Scripts/             앱 패키징, launcher, Formula renderer
 - [현재 제품 명세](docs/SPEC.md)
 - [Homebrew 배포 가이드](docs/HOMEBREW.md)
 - [릴리스 가이드](docs/RELEASING.md)
+- [이슈 자동화 운영 계약](docs/ISSUE_AUTOMATION.md)
+- [Synology 이슈 자동화 설정](docs/SYNOLOGY_AUTOMATION.md)
 - [macOS 수동 검증 체크리스트](docs/MACOS_VALIDATION.md)
 - [실행 계획](tasks/plan.md)
 - [변경 기록](CHANGELOG.md)

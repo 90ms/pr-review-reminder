@@ -210,9 +210,10 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
 ### 작업이 계속 `codex-running`임
 
 - `JOB_TIMEOUT_SECONDS`와 로그를 확인한다.
-- lease가 만료된 뒤 Slack의 재시도는 `codex-failed` 상태에서만 제공된다.
-- 프로세스를 강제 종료했다면 이슈 라벨을 `codex-failed`로 바꾸고 다시 알림을
-  보내기 전에 상태 DB와 남은 workspace를 확인한다.
+- `LEASE_SECONDS`는 `JOB_TIMEOUT_SECONDS`보다 길어야 하며 시작 시 검증된다.
+- 프로세스를 강제 종료한 경우 lease가 만료되면 다음 스캔이 이슈를
+  `codex-failed`로 전환하고 기존 메시지에 **재시도** 버튼을 복구한다.
+- 재시도 전에 상태 DB와 남은 workspace의 로그와 diff를 확인한다.
 
 ### macOS 테스트를 NAS에서 실행할 수 없음
 

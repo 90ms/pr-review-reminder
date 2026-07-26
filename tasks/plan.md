@@ -31,6 +31,7 @@
 | 릴리스 연계 | 태그 릴리스 후 검토 가능한 tap Formula PR 생성 | Release/tap CI |
 | 충돌 진단 | 비정상 종료 감지, 중복 실행 제외, 사용자 동의형 이슈 초안 | 저장소 테스트 + main CI |
 | 릴리스 스킬 | 버전 준비, 승인 게이트, Release와 tap 검증 절차 | skill validator + main CI |
+| 이슈 구현 자동화 | Slack 승인, NAS Codex 작업, Draft PR, CI 알림, 만료 lease 복구 | Python 테스트 + dry-run |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
