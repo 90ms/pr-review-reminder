@@ -5,7 +5,13 @@ import unittest
 from pathlib import Path
 
 from pr_issue_worker.config import ConfigError
-from pr_issue_worker.models import Issue
+from pr_issue_worker.models import (
+    CheckResult,
+    Issue,
+    JobResult,
+    JobStatus,
+    PullRequest,
+)
 from pr_issue_worker.slack_app import SlackAutomation, SlackSettings
 from pr_issue_worker.state import StateStore
 
@@ -28,6 +34,7 @@ class _GitHubStub:
         self.issue = issue
         self.added_labels: list[str] = []
         self.removed_labels: list[str] = []
+        self.check_result = CheckResult(True, "All checks passed")
 
     def list_issues(self, label: str):
         return [self.issue]
@@ -41,18 +48,31 @@ class _GitHubStub:
     def remove_labels(self, issue_number: int, labels):
         self.removed_labels.extend(labels)
 
+    def wait_for_pr_checks(self, pull_request_number: int, timeout_seconds: int):
+        return self.check_result
+
 
 class _WorkerStub:
     def __init__(self):
         self.config = type(
             "Config",
             (),
-            {"ready_label": "codex-ready", "lease_seconds": 300},
+            {
+                "ready_label": "codex-ready",
+                "lease_seconds": 300,
+                "dry_run": False,
+            },
         )()
         self.calls: list[tuple[int, str, bool]] = []
+        self.result: JobResult | None = None
+        self.error: Exception | None = None
 
     def run(self, issue_number: int, approved_by: str, *, already_claimed=False):
         self.calls.append((issue_number, approved_by, already_claimed))
+        if self.error:
+            raise self.error
+        if self.result:
+            return self.result
         raise AssertionError("worker should not run in this test")
 
 
@@ -168,6 +188,78 @@ class SlackAutomationTests(unittest.TestCase):
             if block["type"] == "actions"
         ]
         self.assertEqual(actions[0]["elements"][0]["text"]["text"], "재시도")
+        self.assertEqual(self.client.posts[-1]["thread_ts"], "123.456")
+        self.assertTrue(self.client.posts[-1]["reply_broadcast"])
+        self.assertIn("lease", self.client.posts[-1]["text"])
+
+    def test_job_broadcasts_started_and_completed_notifications(self) -> None:
+        self._claim_issue()
+        self.worker.result = JobResult(
+            JobStatus.COMPLETED,
+            self.issue.number,
+            "Implemented successfully",
+        )
+
+        self.automation._run_job(self.issue, "U123")
+
+        self.assertEqual(len(self.client.posts), 2)
+        self.assertIn("시작", self.client.posts[0]["text"])
+        self.assertIn("완료", self.client.posts[1]["text"])
+        for post in self.client.posts:
+            self.assertEqual(post["thread_ts"], "123.456")
+            self.assertTrue(post["reply_broadcast"])
+
+    def test_job_broadcasts_failure_with_retry_status(self) -> None:
+        self._claim_issue()
+        self.worker.result = JobResult(
+            JobStatus.FAILED,
+            self.issue.number,
+            "Codex timed out",
+        )
+
+        self.automation._run_job(self.issue, "U123")
+
+        self.assertIn("실패", self.client.posts[-1]["text"])
+        actions = [
+            block
+            for block in self.client.updates[-1]["blocks"]
+            if block["type"] == "actions"
+        ]
+        self.assertEqual(actions[0]["elements"][0]["text"]["text"], "재시도")
+
+    def test_unexpected_worker_error_is_recorded_and_notified(self) -> None:
+        self._claim_issue()
+        self.worker.error = RuntimeError("unexpected failure")
+
+        with self.assertLogs("pr_issue_worker.slack_app", level="ERROR"):
+            self.automation._run_job(self.issue, "U123")
+
+        self.assertEqual(self.state.get(8).status, "failed")
+        self.assertIn("codex-running", self.github.removed_labels)
+        self.assertIn("codex-failed", self.github.added_labels)
+        self.assertIn("예상하지 못한", self.client.posts[-1]["text"])
+
+    def test_ci_result_is_broadcast_to_the_issue_thread(self) -> None:
+        self._claim_issue()
+        result = JobResult(
+            JobStatus.COMPLETED,
+            self.issue.number,
+            "Implemented successfully",
+            pull_request=PullRequest(
+                42,
+                "https://github.com/90ms/pr-review-reminder/pull/42",
+                "codex/issue-8",
+            ),
+        )
+
+        self.automation._monitor_checks(self.issue, result)
+
+        self.assertIn("CI 통과", self.client.posts[-1]["text"])
+        self.assertEqual(self.client.posts[-1]["thread_ts"], "123.456")
+
+    def _claim_issue(self) -> None:
+        self.state.record_notification(8, "123.456")
+        self.assertTrue(self.state.claim(8, "U123", 300))
 
 
 def _settings(**overrides: str) -> SlackSettings:

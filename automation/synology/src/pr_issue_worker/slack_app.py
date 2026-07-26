@@ -123,6 +123,11 @@ class SlackAutomation:
                     include_button=True,
                     button_text="재시도",
                 )
+                self._post_lifecycle_notification(
+                    issue,
+                    "❌ 이전 구현 작업의 lease가 만료되어 실패로 처리했습니다. "
+                    "원본 메시지에서 로그를 확인한 뒤 재시도하세요.",
+                )
             except Exception:
                 _LOGGER.exception("Failed to recover stale issue #%s", issue_number)
 
@@ -209,13 +214,33 @@ class SlackAutomation:
             self._stop_event.wait(self.settings.scan_interval_seconds)
 
     def _run_job(self, issue: Issue, approved_by: str) -> None:
-        result = self.worker.run(issue.number, approved_by, already_claimed=True)
+        self._update_message(
+            issue,
+            f"구현 중 · 승인자 <@{approved_by}>",
+            include_button=False,
+        )
+        self._post_lifecycle_notification(
+            issue,
+            f"🚀 <@{approved_by}> · Issue #{issue.number} 구현을 시작했습니다.",
+        )
+        try:
+            result = self.worker.run(issue.number, approved_by, already_claimed=True)
+        except Exception as error:
+            self._handle_unexpected_worker_error(issue, approved_by, error)
+            return
+
         if result.status is JobStatus.COMPLETED and result.pull_request:
             self._update_message(
                 issue,
                 f"Draft PR 생성 완료: <{result.pull_request.url}|"
                 f"#{result.pull_request.number}> · CI 확인 중",
                 include_button=False,
+            )
+            self._post_lifecycle_notification(
+                issue,
+                f"✅ <@{approved_by}> · Issue #{issue.number} 구현과 Draft PR "
+                f"<{result.pull_request.url}|#{result.pull_request.number}> 생성이 "
+                "완료되었습니다. CI를 확인하고 있습니다.",
             )
             self.monitor_executor.submit(self._monitor_checks, issue, result)
             return
@@ -225,6 +250,10 @@ class SlackAutomation:
                 _escape_message(result.summary),
                 include_button=False,
             )
+            self._post_lifecycle_notification(
+                issue,
+                f"✅ <@{approved_by}> · Issue #{issue.number} 구현이 완료되었습니다.",
+            )
             return
 
         self._update_message(
@@ -233,6 +262,18 @@ class SlackAutomation:
             include_button=result.status is JobStatus.FAILED,
             button_text="재시도",
         )
+        if result.status is JobStatus.FAILED:
+            self._post_lifecycle_notification(
+                issue,
+                f"❌ <@{approved_by}> · Issue #{issue.number} 구현에 실패했습니다. "
+                "원본 메시지에서 오류와 재시도 버튼을 확인하세요.",
+            )
+        else:
+            self._post_lifecycle_notification(
+                issue,
+                f"⚠️ <@{approved_by}> · Issue #{issue.number} 구현이 중단되었습니다. "
+                "원본 메시지에서 필요한 조치를 확인하세요.",
+            )
 
     def _monitor_checks(self, issue: Issue, result: JobResult) -> None:
         pull_request = result.pull_request
@@ -248,6 +289,47 @@ class SlackAutomation:
             f"```{_code_block(check_result.summary, 1200)}```",
             include_button=False,
         )
+        icon = "✅" if check_result.passed else "⚠️"
+        self._post_lifecycle_notification(
+            issue,
+            f"{icon} Issue #{issue.number} Draft PR "
+            f"<{pull_request.url}|#{pull_request.number}>의 {status} 결과가 "
+            "도착했습니다.",
+        )
+
+    def _handle_unexpected_worker_error(
+        self,
+        issue: Issue,
+        approved_by: str,
+        error: Exception,
+    ) -> None:
+        _LOGGER.exception(
+            "Unexpected worker error for issue #%s: %s",
+            issue.number,
+            error,
+        )
+        self.state.finish(issue.number, "failed", error=str(error))
+        if not self.worker.config.dry_run:
+            try:
+                self.github.remove_labels(issue.number, ["codex-running"])
+                self.github.add_labels(issue.number, ["codex-failed"])
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to mark unexpected issue #%s failure",
+                    issue.number,
+                )
+        self._update_message(
+            issue,
+            "예상하지 못한 워커 오류가 발생했습니다. 운영 로그를 확인한 뒤 "
+            "재시도하세요.",
+            include_button=True,
+            button_text="재시도",
+        )
+        self._post_lifecycle_notification(
+            issue,
+            f"❌ <@{approved_by}> · Issue #{issue.number} 구현 중 예상하지 못한 "
+            "오류가 발생했습니다. 운영 로그를 확인하세요.",
+        )
 
     def _update_message(
         self,
@@ -261,17 +343,43 @@ class SlackAutomation:
         if state is None or not state.message_ts:
             _LOGGER.error("No Slack message recorded for issue #%s", issue.number)
             return
-        self.client.chat_update(
-            channel=self.settings.channel_id,
-            ts=state.message_ts,
-            text=f"Issue #{issue.number}: {status}",
-            blocks=_status_blocks(
-                issue,
-                status,
-                include_button=include_button,
-                button_text=button_text,
-            ),
-        )
+        try:
+            self.client.chat_update(
+                channel=self.settings.channel_id,
+                ts=state.message_ts,
+                text=f"Issue #{issue.number}: {status}",
+                blocks=_status_blocks(
+                    issue,
+                    status,
+                    include_button=include_button,
+                    button_text=button_text,
+                ),
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Failed to update Slack message for issue #%s",
+                issue.number,
+            )
+
+    def _post_lifecycle_notification(self, issue: Issue, text: str) -> None:
+        state = self.state.get(issue.number)
+        if state is None or not state.message_ts:
+            _LOGGER.error("No Slack thread recorded for issue #%s", issue.number)
+            return
+        try:
+            self.client.chat_postMessage(
+                channel=self.settings.channel_id,
+                thread_ts=state.message_ts,
+                reply_broadcast=True,
+                text=text,
+                unfurl_links=False,
+                unfurl_media=False,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Failed to post Slack lifecycle notification for issue #%s",
+                issue.number,
+            )
 
 
 def run_socket_service(

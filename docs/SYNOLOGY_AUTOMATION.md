@@ -176,6 +176,10 @@ Slack의 **구현 시작**을 누르면 Codex가 격리 clone에서 작업하지
 동안 GitHub branch push와 Draft PR 생성은 수행하지 않는다. 실패 작업 디렉터리는
 `DATA_DIR/workspaces`에 남아 diff와 결과를 확인할 수 있다.
 
+버튼 승인 후에는 원본 메시지가 현재 상태로 갱신되고, 구현 시작·완료·실패·차단과
+CI 결과가 같은 메시지의 브로드캐스트 스레드 답글로 전송된다. 승인자는 멘션을 통해
+장시간 작업의 결과를 다시 확인할 수 있다.
+
 결과와 보호 경로 차단을 확인한 뒤 `.env`를 다음처럼 바꾸고 서비스를 다시 만든다.
 
 ```dotenv
@@ -237,6 +241,13 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
 - App token이 `xapp-`이고 `connections:write` scope가 있는지 확인한다.
 - `docker compose logs issue-worker`에서 WebSocket 재연결 오류를 확인한다.
 - 클릭한 사용자가 `SLACK_ALLOWED_USER_IDS`에 있는지 확인한다.
+
+### 버튼은 동작하지만 시작·완료 알림이 오지 않음
+
+- 최신 이미지를 다시 빌드하고 서비스를 재생성했는지 확인한다.
+- 앱에 `chat:write` Bot Token Scope가 있고 대상 채널에 앱이 참여했는지 확인한다.
+- `docker compose logs issue-worker`에서 `lifecycle notification` 오류를 확인한다.
+- 원본 승인 메시지의 스레드와 채널에 브로드캐스트 답글이 생성됐는지 확인한다.
 
 ### clone은 되지만 push가 실패함
 

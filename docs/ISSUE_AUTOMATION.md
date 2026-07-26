@@ -11,9 +11,12 @@
 1. NAS 스케줄러 또는 수동 명령이 `codex-ready` 이슈를 찾는다.
 2. Slack 채널에 이슈 요약과 **구현 시작** 버튼을 보낸다.
 3. 허용된 Slack 사용자가 버튼을 누르면 이슈를 다시 검증하고 작업을 예약한다.
-4. 워커가 최신 `main`을 별도 작업 디렉터리에 준비하고 Codex CLI를 실행한다.
+4. 워커가 시작 알림을 Slack에 보내고 최신 `main`을 별도 작업 디렉터리에 준비해
+   Codex CLI를 실행한다.
 5. Codex가 구현, 테스트, 관련 문서 갱신과 커밋을 수행한다.
-6. 워커가 브랜치를 푸시하고 Draft PR을 만든 뒤 CI 결과를 Slack에 알린다.
+6. 워커가 브랜치를 푸시하고 Draft PR을 만든다. 완료·실패·차단 결과는 원본 승인
+   메시지의 브로드캐스트 답글로 알린다.
+7. GitHub Actions 결과도 같은 Slack 스레드와 원본 상태 메시지에 반영한다.
 
 자동 병합, 자동 릴리스, GitHub review·approval 게시, 승인되지 않은 이슈 실행은
 범위에 포함하지 않는다. Synology Linux에서는 macOS SwiftUI 앱을 완전히 빌드할 수
@@ -163,12 +166,15 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 - 보호 경로 또는 불명확한 요구: `codex-blocked`로 전환한다.
 - push/PR 실패: 로컬 결과를 보존하고 `codex-failed`로 전환한다.
 - CI 실패: PR은 유지하며 Slack에 실패한 check 링크를 알린다.
+- 구현 시작, 완료와 실패·차단은 승인자에게 멘션되는 Slack 브로드캐스트 답글로
+  알리고 CI 결과도 같은 방식으로 채널에 알린다. 원본 승인 메시지는 최신 상태와
+  재시도 동작을 유지한다.
 
 ## 구현 상태
 
 - `$implement-github-issue` 저장소 스킬과 구조화 완료 보고
 - 설정, GitHub CLI gateway, SQLite lease와 단일 작업 큐
-- Slack Socket Mode 알림, 허용 사용자 승인과 실패 재시도
+- Slack Socket Mode 알림, 허용 사용자 승인, 실행 생명주기 알림과 실패 재시도
 - 격리 clone, Codex timeout, 보호 경로 검사, branch push와 Draft PR
 - GitHub check 감시와 Slack 결과 갱신
 - 만료 lease 복구와 중복 알림·중복 실행 방지
