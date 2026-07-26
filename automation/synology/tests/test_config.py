@@ -20,6 +20,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.base_branch, "main")
         self.assertEqual(config.ready_label, "codex-ready")
         self.assertEqual(config.state_path, Path(directory) / "state.sqlite3")
+        self.assertEqual(
+            config.runner_queue_path,
+            Path(directory) / "runner-queue",
+        )
         self.assertIn(".github/workflows/", config.protected_paths)
         self.assertFalse(config.dry_run)
 

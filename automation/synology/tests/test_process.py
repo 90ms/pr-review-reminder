@@ -23,6 +23,21 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(environment["CODEX_ACCESS_TOKEN"], "codex")
         self.assertNotIn("SLACK_BOT_TOKEN", environment)
 
+    def test_proxy_environment_is_opt_in(self) -> None:
+        source = {
+            "PATH": "/usr/bin",
+            "HTTPS_PROXY": "http://codex-egress:3128",
+            "SLACK_BOT_TOKEN": "xoxb-secret",
+        }
+
+        environment = minimal_environment(source, include_proxy=True)
+
+        self.assertEqual(
+            environment["HTTPS_PROXY"],
+            "http://codex-egress:3128",
+        )
+        self.assertNotIn("SLACK_BOT_TOKEN", environment)
+
     def test_timeout_terminates_process_group(self) -> None:
         with self.assertRaises(CommandTimeout):
             CommandRunner().run(

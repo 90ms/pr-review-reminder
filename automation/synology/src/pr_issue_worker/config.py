@@ -21,6 +21,8 @@ class Config:
     ready_label: str
     state_path: Path
     workspace_path: Path
+    runner_queue_path: Path
+    runner_heartbeat_max_age_seconds: int
     job_timeout_seconds: int
     ci_timeout_seconds: int
     lease_seconds: int
@@ -70,6 +72,12 @@ class Config:
                 values.get("STATE_PATH", str(data_path / "state.sqlite3"))
             ).expanduser(),
             workspace_path=workspace_path,
+            runner_queue_path=Path(
+                values.get("RUNNER_QUEUE_PATH", str(data_path / "runner-queue"))
+            ).expanduser(),
+            runner_heartbeat_max_age_seconds=_positive_int(
+                values, "RUNNER_HEARTBEAT_MAX_AGE_SECONDS", default=30
+            ),
             job_timeout_seconds=job_timeout_seconds,
             ci_timeout_seconds=_positive_int(
                 values, "CI_TIMEOUT_SECONDS", default=1800

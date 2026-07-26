@@ -73,6 +73,7 @@ def minimal_environment(
     source: Mapping[str, str] | None = None,
     *,
     include_auth: bool = False,
+    include_proxy: bool = False,
 ) -> dict[str, str]:
     values = os.environ if source is None else source
     allowed = {
@@ -93,6 +94,17 @@ def minimal_environment(
                 "GH_TOKEN",
                 "GITHUB_TOKEN",
                 "CODEX_ACCESS_TOKEN",
+            }
+        )
+    if include_proxy:
+        allowed.update(
+            {
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "NO_PROXY",
+                "http_proxy",
+                "https_proxy",
+                "no_proxy",
             }
         )
     return {key: value for key, value in values.items() if key in allowed}

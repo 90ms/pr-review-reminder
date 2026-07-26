@@ -37,11 +37,13 @@ GitHub Issues <──── labels ── Automation Service ── Socket Mode 
                     branch + Draft PR + macOS CI
 ```
 
-- **Automation service**: 이슈 검색, Slack 상호작용, 작업 큐와 상태 기록을 담당하는
-  장기 실행 프로세스다.
+- **Controller**: 이슈 검색, Slack 상호작용, workspace 준비, 작업 큐, 결과 검증,
+  GitHub push와 상태 기록을 담당하는 장기 실행 프로세스다.
 - **Scanner**: 서비스 내부 주기 실행 또는 NAS Task Scheduler에서 호출하는 수동
   스캔 명령이다.
-- **Worker**: 승인된 이슈마다 격리된 clone을 만들고 Codex CLI를 실행한다.
+- **Codex Runner**: Controller가 준비한 승인 작업만 소비하고, 기존 Codex CLI
+  로그인으로 저장소 수정·테스트·문서 갱신과 로컬 커밋을 수행한다. GitHub나 Slack
+  인증을 소유하지 않는다.
 - **SQLite state**: Slack 메시지 ID, 승인자, 실행 횟수와 오류를 NAS 볼륨에
   보존한다. GitHub 라벨은 사람이 확인할 수 있는 외부 상태로 사용한다.
 - **GitHub macOS CI**: Linux NAS에서 수행할 수 없는 앱 빌드와 테스트를 검증한다.
@@ -65,6 +67,10 @@ Runner는 상대 경로가 workspace root 밖으로 나가지 않는지 다시 �
 완료·실패·차단 결과만 별도 결과 디렉터리에 atomic rename으로 기록한다. 이슈 본문은
 공개 GitHub에서 읽은 신뢰할 수 없는 요구 사항이며 프로토콜이나 저장소 지침을
 덮어쓸 수 없다. 큐에는 인증 정보나 환경 변수를 기록하지 않는다.
+
+Runner는 시작 시 heartbeat를 게시한다. Controller는 heartbeat가 없거나 오래된 경우
+작업을 큐에 넣지 않고 즉시 실패시켜 승인 요청이 무기한 대기하지 않도록 한다. 실행
+중 Runner가 중단되면 남은 `running` 요청은 다음 시작 시 다시 대기열로 복구한다.
 
 ## 상태 모델
 
