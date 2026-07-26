@@ -22,6 +22,7 @@ class Config:
     state_path: Path
     workspace_path: Path
     job_timeout_seconds: int
+    ci_timeout_seconds: int
     lease_seconds: int
     codex_bin: str
     gh_bin: str
@@ -67,6 +68,9 @@ class Config:
             workspace_path=workspace_path,
             job_timeout_seconds=_positive_int(
                 values, "JOB_TIMEOUT_SECONDS", default=3600
+            ),
+            ci_timeout_seconds=_positive_int(
+                values, "CI_TIMEOUT_SECONDS", default=1800
             ),
             lease_seconds=_positive_int(values, "LEASE_SECONDS", default=3900),
             codex_bin=values.get("CODEX_BIN", "codex"),

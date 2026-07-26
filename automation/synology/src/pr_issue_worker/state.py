@@ -68,8 +68,7 @@ class StateStore:
             return cursor.rowcount == 1
 
     def needs_notification(self, issue_number: int) -> bool:
-        state = self.get(issue_number)
-        return state is None or state.status in {"failed", "blocked"}
+        return self.get(issue_number) is None
 
     def claim(self, issue_number: int, approved_by: str, lease_seconds: int) -> bool:
         now = datetime.now(UTC)

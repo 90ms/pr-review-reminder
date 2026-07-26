@@ -4,8 +4,12 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
-from .models import Issue, PullRequest
-from .process import CommandRunner, minimal_environment
+from .models import CheckResult, Issue, PullRequest
+from .process import (
+    CommandRunner,
+    CommandTimeout,
+    minimal_environment,
+)
 
 
 class GitHubClient:
@@ -141,10 +145,50 @@ class GitHubClient:
             head_ref=value["headRefName"],
         )
 
-    def _run(self, arguments: list[str], cwd: Path | None = None) -> str:
+    def wait_for_pr_checks(
+        self, pull_request_number: int, timeout_seconds: int
+    ) -> CheckResult:
+        try:
+            result = self.runner.run(
+                [
+                    self.gh_bin,
+                    "pr",
+                    "checks",
+                    str(pull_request_number),
+                    "--watch",
+                    "--interval",
+                    "15",
+                    "--repo",
+                    self.repository,
+                ],
+                timeout=timeout_seconds,
+                environment=minimal_environment(include_auth=True),
+                check=False,
+            )
+        except CommandTimeout:
+            return CheckResult(
+                False, f"CI did not finish within {timeout_seconds} seconds."
+            )
+
+        output = "\n".join(
+            line.strip()
+            for line in (result.stdout + "\n" + result.stderr).splitlines()
+            if line.strip()
+        )
+        summary = output[-1500:] or "GitHub reported no check details."
+        return CheckResult(result.returncode == 0, summary)
+
+    def _run(
+        self,
+        arguments: list[str],
+        cwd: Path | None = None,
+        *,
+        timeout: int = 60,
+    ) -> str:
         result = self.runner.run(
             [self.gh_bin, *arguments, "--repo", self.repository],
             cwd=cwd,
+            timeout=timeout,
             environment=minimal_environment(include_auth=True),
         )
         return result.stdout

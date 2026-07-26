@@ -5,4 +5,6 @@ dist/
 __pycache__/
 *.py[cod]
 .venv/
+*.egg-info/
 automation/synology/data/
+automation/synology/build/

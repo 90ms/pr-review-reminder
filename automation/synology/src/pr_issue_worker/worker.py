@@ -45,8 +45,16 @@ class IssueWorker:
         self.github = github
         self.runner = runner
 
-    def run(self, issue_number: int, approved_by: str) -> JobResult:
-        if not self.state.claim(issue_number, approved_by, self.config.lease_seconds):
+    def run(
+        self,
+        issue_number: int,
+        approved_by: str,
+        *,
+        already_claimed: bool = False,
+    ) -> JobResult:
+        if not already_claimed and not self.state.claim(
+            issue_number, approved_by, self.config.lease_seconds
+        ):
             return JobResult(
                 JobStatus.BLOCKED,
                 issue_number,
@@ -153,11 +161,13 @@ class IssueWorker:
                 codex_result,
                 pull_request,
             )
-            shutil.rmtree(workspace.parent)
+            shutil.rmtree(workspace.parent, ignore_errors=True)
             return result
         except (
             CommandError,
             CommandTimeout,
+            KeyError,
+            OSError,
             RuntimeError,
             TypeError,
             ValueError,

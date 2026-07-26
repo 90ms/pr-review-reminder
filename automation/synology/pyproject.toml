@@ -7,7 +7,7 @@ name = "pr-review-issue-worker"
 version = "0.1.0"
 description = "Synology worker for approved PR Review Reminder GitHub issues"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["slack-bolt==1.30.0"]
 
 [project.scripts]
 pr-issue-worker = "pr_issue_worker.cli:main"

@@ -16,6 +16,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run approved GitHub issue automation")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("doctor", help="validate configuration and CLI access")
+    subparsers.add_parser(
+        "serve", help="run Slack Socket Mode and the scheduled scanner"
+    )
+    subparsers.add_parser("notify", help="send approval messages for ready issues once")
     scan_parser = subparsers.add_parser(
         "scan", help="list ready issues without changing GitHub"
     )
@@ -33,9 +37,36 @@ def main(argv: list[str] | None = None) -> int:
         state = StateStore(config.state_path)
         state.initialize()
         github = GitHubClient(config.repository, runner, gh_bin=config.gh_bin)
+        worker = IssueWorker(config, state, github, runner)
 
         if arguments.command == "doctor":
             return _doctor(config, runner)
+        if arguments.command in {"serve", "notify"}:
+            from .slack_app import (
+                SlackSettings,
+                notify_once,
+                run_socket_service,
+            )
+
+            settings = SlackSettings.from_env()
+            if arguments.command == "serve":
+                run_socket_service(
+                    settings=settings,
+                    github=github,
+                    state=state,
+                    worker=worker,
+                    ci_timeout_seconds=config.ci_timeout_seconds,
+                )
+                return 0
+            count = notify_once(
+                settings=settings,
+                github=github,
+                state=state,
+                worker=worker,
+                ci_timeout_seconds=config.ci_timeout_seconds,
+            )
+            print(f"sent {count} approval message(s)")
+            return 0
         if arguments.command == "scan":
             issues = github.list_issues(config.ready_label)
             if arguments.json:
@@ -45,7 +76,6 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"#{issue.number}\t{issue.title}\t{issue.url}")
             return 0
 
-        worker = IssueWorker(config, state, github, runner)
         result = worker.run(arguments.issue, arguments.approved_by)
         print(json.dumps(asdict(result), default=str))
         return 0 if result.status == "completed" else 1

@@ -28,6 +28,12 @@ class PullRequest:
 
 
 @dataclass(frozen=True)
+class CheckResult:
+    passed: bool
+    summary: str
+
+
+@dataclass(frozen=True)
 class JobResult:
     status: JobStatus
     issue_number: int
