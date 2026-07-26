@@ -31,10 +31,21 @@
 | 릴리스 연계 | 태그 릴리스 후 검토 가능한 tap Formula PR 생성 | Release/tap CI |
 | 충돌 진단 | 비정상 종료 감지, 중복 실행 제외, 사용자 동의형 이슈 초안 | 저장소 테스트 + main CI |
 | 릴리스 스킬 | 버전 준비, 승인 게이트, Release와 tap 검증 절차 | skill validator + main CI |
-| 이슈 구현 자동화 | Slack 승인, NAS Codex 작업, Draft PR, CI 알림, 만료 lease 복구 | Python 테스트 + dry-run |
+| 이슈 구현 자동화 | Slack 승인, 분리된 Controller/Runner, 제한 egress, Draft PR, CI 알림, 만료 lease 복구 | Python 테스트 + Synology dry-run |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
+
+### P0 — Synology Runner 실행 관찰성
+
+- job별 단계와 독립 heartbeat를 파일 queue에 atomic write한다.
+- Controller 단계와 Runner 단계를 합쳐 경과 시간·마지막 활동 시각을 계산한다.
+- Slack 원본 메시지를 단계 변경 또는 최대 60초 주기로 갱신한다.
+- 허용 사용자용 **상태 새로고침**과 stale/timeout 임박 단일 경고를 제공한다.
+- 로그 원문과 인증 값은 Slack 상태에 포함하지 않는다.
+
+완료 조건: NAS 셸에 접속하지 않고도 Slack에서 대기·실행·검증·push·CI 단계를
+구분하고, 멈춘 Runner와 오래 실행 중인 정상 작업을 구별할 수 있다.
 
 ### P0 — 실제 macOS 제품 검증
 

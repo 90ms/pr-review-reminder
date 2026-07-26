@@ -310,6 +310,35 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
 `DATA_DIR/runner-queue`는 실행 중 작업이 없을 때 비어 있어야 한다.
 `DATA_DIR/workspaces`는 실패 분석이 필요하지 않으면 백업하지 않아도 된다.
 
+## 실행 중 상태 확인
+
+현재 버전은 Slack에 시작·완료·실패·차단을 알리지만 실행 중 세부 진행률은 아직
+자동으로 갱신하지 않는다. 구현 작업이 실제 실행 중인지 확인할 때는 다음 세 가지를
+함께 본다.
+
+```bash
+docker compose top codex-runner
+
+find /volume1/docker/pr-review-issue-worker/data/runner-queue \
+  -maxdepth 2 -type f -print
+
+docker compose logs -f --tail=100 \
+  issue-worker codex-runner codex-egress
+```
+
+- `codex-runner`에 `codex exec` 프로세스가 있으면 구현 명령이 실행 중이다.
+- `pending/*.json`은 Runner 대기, `running/*.json`은 Codex 실행,
+  `results/*.json`은 Runner 결과 생성을 의미한다.
+- egress 로그의 허용된 OpenAI/ChatGPT `CONNECT`는 Runner 통신이 진행 중임을
+  보여준다.
+- `DRY_RUN=true`에서는 정상 구현 후에도 push하지 않고 Slack에 차단 상태와
+  **재시도** 버튼을 표시한다.
+
+현재 heartbeat는 새 작업을 받기 전 Runner 가용성을 검증하기 위한 값이다. Codex
+명령이 실행되는 동안 독립적으로 갱신되는 작업 heartbeat는 아직 없으므로, 장시간
+실행 중에는 `runner-heartbeat` 파일만으로 정지 여부를 판단하지 않는다. 향후에는
+원본 Slack 메시지에 단계·경과 시간·마지막 작업 heartbeat를 자동 갱신한다.
+
 ## 문제 해결
 
 ### Slack 메시지는 오지만 버튼이 반응하지 않음

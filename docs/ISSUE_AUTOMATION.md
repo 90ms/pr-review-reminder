@@ -236,3 +236,25 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 - 만료 lease 복구와 중복 알림·중복 실행 방지
 - Docker/Compose, Slack manifest, 라벨 설정 스크립트와 Synology 운영 가이드
 - Python 단위 테스트와 GitHub Actions 자동 검증
+
+## 다음 개선: 실행 관찰성
+
+현재 Slack은 작업 시작과 최종 결과를 알리지만 Codex 실행 중에는 운영자가 NAS에서
+프로세스와 queue를 직접 확인해야 한다. 다음 변경은 로그 원문을 Slack으로 보내지
+않고 구조화된 상태만 제공하는 것을 목표로 한다.
+
+1. Runner가 job별 상태 파일에 `queued`, `claimed`, `codex_running`,
+   `result_ready` 단계와 시작·갱신 시각을 atomic write한다.
+2. Codex subprocess와 별개의 heartbeat loop를 두어 장시간 실행 중에도 Runner와
+   작업 생존 상태를 구분한다.
+3. Controller가 저장소 준비, queue 대기, Codex 실행, 결과 검증, push, Draft PR,
+   CI 단계와 경과 시간을 하나의 모델로 합친다.
+4. Slack 원본 승인 메시지를 60초보다 자주 갱신하지 않으며 단계가 바뀌면 즉시
+   갱신한다. 새 채널 메시지를 반복 전송하지 않는다.
+5. 허용된 사용자를 위한 **상태 새로고침** 버튼을 제공하고, stale heartbeat나
+   timeout 임박은 같은 스레드에 한 번만 경고한다.
+6. Codex stdout/stderr, prompt, 토큰과 인증 값은 상태 메시지에 포함하지 않는다.
+   향후 세부 이벤트를 사용하더라도 허용 목록 기반의 단계 정보만 노출한다.
+
+작업 취소는 process group 종료, queue 취소 신호와 최종 상태 경합을 별도로 설계해야
+하므로 첫 관찰성 변경에는 포함하지 않는다.
