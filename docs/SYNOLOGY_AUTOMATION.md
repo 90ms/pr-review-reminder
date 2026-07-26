@@ -153,6 +153,10 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_CHANNEL_ID=C...
 SLACK_ALLOWED_USER_IDS=U...
 CODEX_RUNNER_MODE=outer-container
+RUNNER_HEARTBEAT_SECONDS=10
+STATUS_UPDATE_INTERVAL_SECONDS=60
+JOB_HEARTBEAT_STALE_SECONDS=45
+JOB_TIMEOUT_WARNING_SECONDS=300
 ```
 
 `1026:100`은 예시다. Synology 사용자 UID/GID는 `id automation` 또는 실제 자동화
@@ -276,7 +280,11 @@ sudo chown -R 1026:100 /volume1/docker/pr-review-issue-worker/data
 ```dotenv
 RUNNER_HEARTBEAT_MAX_AGE_SECONDS=30
 RUNNER_POLL_SECONDS=1
+RUNNER_HEARTBEAT_SECONDS=10
 CODEX_RUNNER_MODE=outer-container
+STATUS_UPDATE_INTERVAL_SECONDS=60
+JOB_HEARTBEAT_STALE_SECONDS=45
+JOB_TIMEOUT_WARNING_SECONDS=300
 ```
 
 새 이미지를 빌드하고 Runner부터 진단한 뒤 Controller를 시작한다.
@@ -312,9 +320,19 @@ SQLite를 복사하기보다 서비스를 잠시 중지하거나 Synology snapsh
 
 ## 실행 중 상태 확인
 
-현재 버전은 Slack에 시작·완료·실패·차단을 알리지만 실행 중 세부 진행률은 아직
-자동으로 갱신하지 않는다. 구현 작업이 실제 실행 중인지 확인할 때는 다음 세 가지를
-함께 본다.
+Slack 원본 승인 메시지는 다음 단계를 자동으로 표시한다.
+
+```text
+저장소 준비 → Runner 대기 → Runner 수신 → Codex 구현
+→ 변경 검증 → branch push → Draft PR → CI 확인
+```
+
+단계 변경은 즉시 반영하고 같은 단계에서는 최대 60초마다 경과 시간과 마지막 활동
+시각을 갱신한다. 허용된 사용자는 **상태 새로고침** 버튼으로 즉시 확인할 수 있다.
+Runner heartbeat가 45초 이상 갱신되지 않거나 timeout이 5분 이내로 다가오면 같은
+스레드에 경고를 한 번만 보낸다.
+
+Slack 상태를 사용할 수 없을 때는 다음 명령을 fallback으로 사용한다.
 
 ```bash
 docker compose top codex-runner
@@ -328,16 +346,16 @@ docker compose logs -f --tail=100 \
 
 - `codex-runner`에 `codex exec` 프로세스가 있으면 구현 명령이 실행 중이다.
 - `pending/*.json`은 Runner 대기, `running/*.json`은 Codex 실행,
-  `results/*.json`은 Runner 결과 생성을 의미한다.
+  `progress/*.json`은 현재 단계·heartbeat, `results/*.json`은 Runner 결과 생성을
+  의미한다.
 - egress 로그의 허용된 OpenAI/ChatGPT `CONNECT`는 Runner 통신이 진행 중임을
   보여준다.
 - `DRY_RUN=true`에서는 정상 구현 후에도 push하지 않고 Slack에 차단 상태와
   **재시도** 버튼을 표시한다.
 
-현재 heartbeat는 새 작업을 받기 전 Runner 가용성을 검증하기 위한 값이다. Codex
-명령이 실행되는 동안 독립적으로 갱신되는 작업 heartbeat는 아직 없으므로, 장시간
-실행 중에는 `runner-heartbeat` 파일만으로 정지 여부를 판단하지 않는다. 향후에는
-원본 Slack 메시지에 단계·경과 시간·마지막 작업 heartbeat를 자동 갱신한다.
+상태 갱신 주기와 경고 임계값은 `.env`의 `STATUS_UPDATE_INTERVAL_SECONDS`,
+`JOB_HEARTBEAT_STALE_SECONDS`, `JOB_TIMEOUT_WARNING_SECONDS`로 조정한다. Slack API
+호출을 과도하게 만들지 않도록 자동 갱신 간격은 최소 15초다.
 
 ## 문제 해결
 

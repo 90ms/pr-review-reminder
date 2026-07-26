@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A versioned file-queue protocol and separate Codex Runner image with an
   internal network, an OpenAI/ChatGPT allowlisted egress proxy, and heartbeat
   health checks.
+- Persistent Controller/Runner job phases, an independent in-job heartbeat,
+  rate-limited live Slack status, authorized manual refresh, and one-time stale
+  or timeout warnings.
 
 ### Fixed
 

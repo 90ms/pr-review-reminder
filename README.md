@@ -204,6 +204,8 @@ codex-ready issue → Slack 승인 → Controller queue → 격리 Codex Runner
 자동 병합·review·approval·릴리스는 수행하지 않습니다. 실제 토큰과 CLI 인증은 NAS에만
 두며 공개 저장소에는 Docker/Compose 예제와 스킬, 테스트만 포함합니다. Runner에는
 GitHub·Slack 인증을 전달하지 않고 OpenAI/ChatGPT allowlist proxy만 허용합니다.
+Slack 원본 메시지는 준비·Codex 실행·검증·push·PR·CI 단계와 Runner heartbeat를
+자동 갱신하며, 허용 사용자는 **상태 새로고침**으로 즉시 확인할 수 있습니다.
 기존 단일 컨테이너 설치는 인증과 상태를 유지한 채 전환할 수 있습니다. 설치 전에는
 [운영 계약](docs/ISSUE_AUTOMATION.md)과
 [Synology 설정 가이드](docs/SYNOLOGY_AUTOMATION.md)의 공개 이슈 및 Codex 인증
