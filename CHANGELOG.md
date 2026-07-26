@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   material before pushing a branch.
 - The default Synology Compose deployment no longer requires PID, CPU CFS, or
   memory cgroups that are unavailable on some DSM kernels.
+- Synology issue workspaces now ignore bind-mount executable-bit drift instead
+  of treating every `100644` file as a protected-path modification.
 
 ## [0.3.1] - 2026-07-24
 

@@ -223,6 +223,7 @@ class IssueWorker:
             cwd=job_root,
             timeout=300,
         )
+        self._git(["config", "core.fileMode", "false"], cwd=repository_path)
         self._git(["checkout", "-b", branch], cwd=repository_path)
         return repository_path
 
@@ -357,7 +358,7 @@ class IssueWorker:
         (git_directory / "config").write_text(
             "[core]\n"
             "\trepositoryformatversion = 0\n"
-            "\tfilemode = true\n"
+            "\tfilemode = false\n"
             "\tbare = false\n"
             "\tlogallrefupdates = true\n"
             "\thooksPath = /dev/null\n"

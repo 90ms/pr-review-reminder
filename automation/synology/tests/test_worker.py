@@ -160,6 +160,62 @@ class WorkerTests(unittest.TestCase):
 
         self.assertEqual(leaked, ["../outside.txt"])
 
+    def test_repository_boundary_ignores_synology_file_mode_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace_root = root / "data" / "workspaces"
+            repository = workspace_root / "issue-2-test" / "repository"
+            repository.parent.mkdir(parents=True)
+            runner = CommandRunner()
+            runner.run(["git", "init", "--initial-branch=main", str(repository)])
+            source = repository / "README.md"
+            source.write_text("test\n", encoding="utf-8")
+            runner.run(["git", "add", "README.md"], cwd=repository)
+            runner.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "-m",
+                    "test",
+                ],
+                cwd=repository,
+            )
+            base_sha = runner.run(
+                ["git", "rev-parse", "HEAD"], cwd=repository
+            ).stdout.strip()
+            branch = "codex/issue-2-test"
+            runner.run(["git", "checkout", "-b", branch], cwd=repository)
+            config = Config.from_env(
+                {
+                    "GITHUB_REPOSITORY": "90ms/pr-review-reminder",
+                    "DATA_PATH": str(root / "data"),
+                }
+            )
+            state = StateStore(config.state_path)
+            state.initialize()
+            worker = IssueWorker(
+                config,
+                state,
+                _GitHubStub(Issue(2, "Test", "", "", "maintainer")),
+                runner,
+            )
+
+            worker._restore_repository_boundary(repository, branch, base_sha)
+            source.chmod(0o755)
+
+            file_mode = runner.run(
+                ["git", "config", "--bool", "core.fileMode"],
+                cwd=repository,
+            ).stdout.strip()
+            changed = worker._changed_paths(repository, base_sha)
+
+        self.assertEqual(file_mode, "false")
+        self.assertEqual(changed, [])
+
 
 class _PreparedWorker(IssueWorker):
     def __init__(self, config, state, github, runner, root: Path):

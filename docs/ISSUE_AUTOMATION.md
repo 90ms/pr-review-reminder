@@ -137,6 +137,8 @@ Runner에는 다음 제한을 모두 적용한다.
   push하지 않는다.
 - Runner가 변경한 Git config를 폐기하고 고정 origin과 비활성 hook 설정을 복원한 뒤,
   승인된 base SHA의 후손인지 확인한다.
+- Synology bind mount의 실행 비트 표현 차이가 전체 파일 변경으로 오인되지 않도록
+  격리 checkout의 `core.fileMode`를 끄고 내용 변경만 검증한다.
 
 `privileged`, `SYS_ADMIN`, Docker socket 또는 `seccomp=unconfined`으로 bwrap을
 강제하는 구성은 지원하지 않는다. 더 강한 격리가 필요한 운영자는 user namespace를

@@ -395,6 +395,15 @@ docker compose logs -f --tail=100 \
 - 이 제한을 사용할 수 없는 것은 경고 대상이지만 Runner의 read-only root,
   capability 제거, 내부 network와 allowlist proxy는 계속 적용된다.
 
+### 모든 파일이 보호 경로 변경으로 차단됨
+
+- 오래된 이미지에서는 Synology bind mount가 일반 파일을 실행 가능 파일로 보여
+  `100644 → 100755` 모드 변경이 전체 diff로 잡힐 수 있다.
+- 최신 `main`은 격리 checkout과 Controller가 복원하는 Git config 모두에서
+  `core.fileMode=false`를 적용해 내용이 같은 권한 차이를 무시한다.
+- 이미 차단된 workspace는 진단용으로 남겨 두고, 최신 이미지를 다시 빌드한 뒤
+  Slack의 **재시도**를 사용한다.
+
 ### macOS 테스트를 NAS에서 실행할 수 없음
 
 정상적인 제한이다. NAS는 가능한 정적 검사와 변경 작업만 수행하고, Draft PR이
