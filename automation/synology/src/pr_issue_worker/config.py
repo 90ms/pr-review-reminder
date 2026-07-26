@@ -76,7 +76,7 @@ class Config:
             codex_bin=values.get("CODEX_BIN", "codex"),
             gh_bin=values.get("GH_BIN", "gh"),
             git_bin=values.get("GIT_BIN", "git"),
-            dry_run=_boolean(values.get("DRY_RUN", "false")),
+            dry_run=_boolean(values.get("DRY_RUN", "false"), "DRY_RUN"),
             protected_paths=protected,
         )
 
@@ -99,10 +99,10 @@ def _positive_int(values: Mapping[str, str], name: str, *, default: int) -> int:
     return result
 
 
-def _boolean(raw: str) -> bool:
+def _boolean(raw: str, name: str) -> bool:
     normalized = raw.strip().lower()
     if normalized in {"1", "true", "yes", "on"}:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    raise ConfigError("DRY_RUN must be a boolean")
+    raise ConfigError(f"{name} must be a boolean")

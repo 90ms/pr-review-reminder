@@ -27,6 +27,7 @@ class SlackSettings:
     channel_id: str
     allowed_user_ids: frozenset[str]
     scan_interval_seconds: int
+    internal_scanner_enabled: bool
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> SlackSettings:
@@ -57,6 +58,10 @@ class SlackSettings:
             channel_id,
             allowed_users,
             interval,
+            _boolean(
+                values.get("ENABLE_INTERNAL_SCANNER", "true"),
+                "ENABLE_INTERNAL_SCANNER",
+            ),
         )
 
 
@@ -274,7 +279,8 @@ def run_socket_service(
         ci_timeout_seconds=ci_timeout_seconds,
     )
     app.action(_IMPLEMENT_ACTION)(automation.handle_implementation)
-    automation.start_scanner()
+    if settings.internal_scanner_enabled:
+        automation.start_scanner()
     try:
         SocketModeHandler(app, settings.app_token).start()
     finally:
@@ -376,6 +382,15 @@ def _required(values: Mapping[str, str], name: str) -> str:
     if not value:
         raise ConfigError(f"{name} is required")
     return value
+
+
+def _boolean(raw: str, name: str) -> bool:
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigError(f"{name} must be a boolean")
 
 
 def _truncate(value: str, limit: int) -> str:

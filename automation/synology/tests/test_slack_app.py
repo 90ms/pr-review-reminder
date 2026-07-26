@@ -68,6 +68,11 @@ class SlackSettingsTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "at least 30"):
             _settings(SCAN_INTERVAL_SECONDS="10")
 
+    def test_can_disable_internal_scanner_for_nas_scheduler(self) -> None:
+        settings = _settings(ENABLE_INTERNAL_SCANNER="false")
+
+        self.assertFalse(settings.internal_scanner_enabled)
+
 
 class SlackAutomationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -144,6 +149,7 @@ def _settings(**overrides: str) -> SlackSettings:
         "SLACK_CHANNEL_ID": "C123",
         "SLACK_ALLOWED_USER_IDS": "U123,U456",
         "SCAN_INTERVAL_SECONDS": "300",
+        "ENABLE_INTERNAL_SCANNER": "true",
     }
     values.update(overrides)
     return SlackSettings.from_env(values)

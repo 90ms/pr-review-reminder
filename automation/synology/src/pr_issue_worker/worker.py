@@ -202,6 +202,15 @@ class IssueWorker:
             cwd=job_root,
             timeout=300,
         )
+        self._git(
+            [
+                "config",
+                "--local",
+                "credential.https://github.com.helper",
+                "!gh auth git-credential",
+            ],
+            cwd=repository_path,
+        )
         self._git(["checkout", "-b", branch], cwd=repository_path)
         return repository_path
 

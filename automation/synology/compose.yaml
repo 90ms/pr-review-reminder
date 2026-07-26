@@ -1,0 +1,30 @@
+services:
+  issue-worker:
+    build:
+      context: ../..
+      dockerfile: automation/synology/Dockerfile
+      args:
+        CODEX_CLI_VERSION: ${CODEX_CLI_VERSION:-0.137.0}
+    image: pr-review-issue-worker:local
+    restart: unless-stopped
+    init: true
+    user: "${PUID:?Set PUID}:${PGID:?Set PGID}"
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      HOME: /home/worker
+      DATA_PATH: /data
+      STATE_PATH: /data/state.sqlite3
+      WORKSPACE_PATH: /data/workspaces
+      CODEX_HOME: /home/worker/.codex
+    volumes:
+      - "${DATA_DIR:?Set DATA_DIR}:/data"
+      - "${GH_CONFIG_DIR:?Set GH_CONFIG_DIR}:/home/worker/.config/gh:ro"
+      - "${CODEX_HOME_DIR:?Set CODEX_HOME_DIR}:/home/worker/.codex"
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
