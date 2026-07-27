@@ -98,8 +98,8 @@ pr-review-reminder --doctor
 
 ## 사용 흐름
 
-1. **새로고침**으로 리뷰 대기 PR을 수집합니다. 이 단계는 AI 리뷰를 실행하거나
-   GitHub에 쓰지 않습니다.
+1. **새로고침**으로 리뷰 대기 PR과 내 PR에 도착한 미승인 리뷰 피드백을 수집합니다.
+   이 단계는 AI 리뷰를 실행하거나 GitHub에 쓰지 않습니다.
 2. PR 카드에서 **코드 리뷰**를 눌러 AI 초안을 생성합니다. 완료된 PR은
    **리뷰 다시하기**로 현재 head와 diff를 다시 가져와 새 초안을 만들 수 있습니다.
 3. **자세히 보기**에서 `리뷰 / 변경 내용 / 나란히` 레이아웃을 선택하고 요약,
@@ -111,7 +111,7 @@ pr-review-reminder --doctor
 
 | 영역 | 내용 |
 |---|---|
-| PR 수집 | `review-requested:@me` 기반, owner/repository 범위 설정, 최대 1,000건 검색 |
+| PR 수집 | `review-requested:@me` 리뷰 요청 인박스와 `author:@me` 미승인 피드백 인박스, owner/repository 범위 설정, 최대 1,000건 검색 |
 | 조회 진단 | GitHub 재시도 횟수, rate limit 실패와 1,000건 검색 상한 표시 |
 | AI 리뷰 | Claude/Codex CLI, 사용자 프롬프트·리뷰 규칙, 완료 결과 다시 리뷰, 10분 timeout과 취소 |
 | 상세·Diff | 리뷰/변경/나란히 집중 보기, 파일 검색·변경 줄·인라인 코멘트 위치 이동, 긴 줄 가로 스크롤 |
@@ -242,9 +242,9 @@ automation/synology/ 선택적 Slack 승인·Codex Draft PR 워커
 
 ## 알려진 제약
 
-- 현재는 내가 리뷰어로 요청된 PR만 표시합니다. 내가 작성한 PR의 미승인 리뷰
-  피드백 인박스는 [이슈 #4](https://github.com/90ms/pr-review-reminder/issues/4)에서
-  설계 중입니다.
+- 내가 리뷰어로 요청된 PR과 내가 작성한 PR의 미승인 리뷰 피드백을 별도 인박스로
+  표시합니다. 피드백 인박스는 정식 PR review와 GitHub `reviewDecision`을 기준으로
+  합니다.
 - 스케줄은 앱이 실행 중일 때만 동작하며 별도 background daemon은 없습니다.
 - 한 GitHub Search 쿼리는 API 제한에 따라 최대 1,000건을 조회합니다.
 - Codex 비용은 실제 청구액이 아니라 설정한 모델 단가와 보고 토큰을 이용한 추정입니다.

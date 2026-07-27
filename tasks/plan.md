@@ -49,20 +49,20 @@
 체크 항목과 증적 위치는
 [`docs/MACOS_VALIDATION.md`](../docs/MACOS_VALIDATION.md)에 유지한다.
 
-### P1 — 내가 작성한 PR의 피드백 인박스
+### P1 — 내가 작성한 PR의 피드백 인박스 (완료)
 
-현재 목록은 `review-requested:@me`인 열린 PR만 다룬다. 다음 제품 기능은
-[이슈 #4](https://github.com/90ms/pr-review-reminder/issues/4)를 기준으로, 내가
-작성한 PR에 정식 리뷰가 도착했지만 GitHub의 최종 `reviewDecision`이 아직
-`APPROVED`가 아닌 항목을 별도 인박스로 제공한다.
+현재 제품은 `review-requested:@me` 리뷰 요청 인박스와
+`author:@me` 미승인 피드백 인박스를 분리한다. 피드백 인박스는 내가 작성한 PR에
+정식 리뷰가 도착했지만 GitHub의 최종 `reviewDecision`이 아직 `APPROVED`가 아닌
+항목을 읽기 전용으로 제공한다.
 
 권장 MVP:
 
 - `author:@me`, 열린 PR, 정식 review 1건 이상, `reviewDecision != APPROVED`
-- 기존 “내가 리뷰할 PR”과 별도 탭 또는 섹션
+- 기존 “내가 리뷰할 PR”과 별도 탭
 - 변경 요청, 코멘트 도착, 승인 대기 상태 구분
-- 새 review ID/시각을 기준으로 중복 없는 알림
-- 첫 버전은 읽기 전용이며 자동 응답이나 GitHub 쓰기를 추가하지 않음
+- 최신 review ID를 기준으로 중복 없는 알림
+- 읽기 전용이며 자동 응답이나 GitHub 쓰기를 추가하지 않음
 
 구현 전 결정할 항목은 일반 issue comment와 봇 리뷰의 포함 여부, 탭/섹션 UI,
 중복 항목 처리 방식이다.

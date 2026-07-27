@@ -82,6 +82,7 @@ public struct PRItem: Identifiable, Equatable {
 @MainActor
 public final class AppState: ObservableObject {
     @Published public private(set) var items: [PRItem] = []
+    @Published public private(set) var feedbackItems: [PRFeedbackItem] = []
     @Published public private(set) var status: DependencyStatus?
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var lastRun: Date?
@@ -90,6 +91,7 @@ public final class AppState: ObservableObject {
     @Published public private(set) var launchAtLoginError: String?
     @Published public private(set) var pendingTerminationReport: UnexpectedTerminationReport?
     @Published public private(set) var feedbackDraft: FeedbackDraft?
+    @Published public private(set) var feedbackError: String?
     @Published public private(set) var lastRefreshDiagnostic: RefreshDiagnostic?
     @Published public var lastError: String?
     @Published public var settings: AppSettings
@@ -108,6 +110,7 @@ public final class AppState: ObservableObject {
     private let locator: ToolLocator
     private let settingsStore: SettingsStore
     private let history: HistoryStore
+    private let feedbackSeenStore: FeedbackSeenStore
     private let scheduleRunStore: ScheduleRunStore
     private let launchAtLoginManager: LaunchAtLoginManaging
     private let sessionHealthStore: SessionHealthStore
@@ -124,6 +127,7 @@ public final class AppState: ObservableObject {
     public init(runner: ProcessRunning = SystemProcessRunner(),
                 settingsStore: SettingsStore = SettingsStore(),
                 history: HistoryStore = HistoryStore(),
+                feedbackSeenStore: FeedbackSeenStore = FeedbackSeenStore(),
                 scheduleRunStore: ScheduleRunStore = ScheduleRunStore(),
                 launchAtLoginManager: LaunchAtLoginManaging = LaunchAtLoginService(),
                 sessionHealthStore: SessionHealthStore = SessionHealthStore(),
@@ -132,6 +136,7 @@ public final class AppState: ObservableObject {
         self.locator = ToolLocator(runner: runner)
         self.settingsStore = settingsStore
         self.history = history
+        self.feedbackSeenStore = feedbackSeenStore
         self.scheduleRunStore = scheduleRunStore
         self.launchAtLoginManager = launchAtLoginManager
         self.sessionHealthStore = sessionHealthStore
@@ -414,7 +419,11 @@ public final class AppState: ObservableObject {
             // Fetch only — do NOT auto-analyze. Preserve any existing analysis for PRs
             // that are still open so a manual review isn't discarded on refresh.
             let previous = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-            items = prs.map { pr in previous[pr.id] ?? PRItem(pr: pr) }
+            items = prs.map { pr in
+                guard var item = previous[pr.id] else { return PRItem(pr: pr) }
+                item.pr = pr
+                return item
+            }
             lastRefreshDiagnostic = RefreshDiagnostic(
                 date: Date(),
                 outcome: .success,
@@ -442,11 +451,37 @@ public final class AppState: ObservableObject {
             return
         }
 
+        do {
+            let seenReviewIDs = feedbackSeenStore.load()
+            let fetch = try await github.fetchAuthoredFeedbackResult(
+                settings: settings,
+                seenReviewIDsByPR: seenReviewIDs
+            )
+            feedbackItems = fetch.feedbackItems
+            feedbackError = nil
+            var updatedSeen = seenReviewIDs
+            for item in feedbackItems {
+                updatedSeen[item.id] = item.latestReview.id
+            }
+            feedbackSeenStore.save(updatedSeen)
+        } catch {
+            feedbackError = "\(error)"
+        }
+
         let newOnes = items.filter { !previousIDs.contains($0.id) }
         if settings.notificationsEnabled, !newOnes.isEmpty {
             Notifier.notify(
                 title: "PR Review Reminder",
                 body: "\(newOnes.count) pull request(s) awaiting your review."
+            )
+        }
+        let newFeedbackCount = feedbackItems
+            .filter { $0.newFeedbackCount > 0 }
+            .reduce(0) { $0 + $1.newFeedbackCount }
+        if settings.notificationsEnabled, newFeedbackCount > 0 {
+            Notifier.notify(
+                title: l("pr_feedback_title"),
+                body: String(format: l("pr_feedback_body"), newFeedbackCount)
             )
         }
 

@@ -66,6 +66,17 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertTrue(search.arguments.contains("fastlane-dev"))
         XCTAssertTrue(search.arguments.contains("1000"))
 
+        let authored = GitHubService.searchAuthoredPRsCommand(gh: gh, owner: "fastlane-dev", repositories: [])
+        XCTAssertTrue(authored.arguments.contains("--author=@me"))
+        XCTAssertTrue(authored.arguments.contains("--state=open"))
+        XCTAssertTrue(authored.arguments.contains("--owner"))
+
+        let feedbackDetails = GitHubService.feedbackDetailsCommand(gh: gh, repository: "fastlane-dev/beez", number: 42)
+        XCTAssertEqual(feedbackDetails.arguments, [
+            "pr", "view", "42", "-R", "fastlane-dev/beez",
+            "--json", "reviewDecision,reviews"
+        ])
+
         let scoped = GitHubService.searchPRsCommand(gh: gh, owner: "fastlane-dev", repositories: ["beez", "acme/web"])
         XCTAssertTrue(scoped.arguments.contains("fastlane-dev/beez"))
         XCTAssertTrue(scoped.arguments.contains("acme/web"))
@@ -96,6 +107,58 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertEqual(payload["commit_id"] as? String, "abc123")
         XCTAssertEqual(payload["event"] as? String, "APPROVE")
         XCTAssertEqual((payload["comments"] as? [[String: Any]])?.count, 1)
+    }
+
+    func testParseFeedbackDetailsFiltersApprovedAndClassifiesStatus() throws {
+        let pr = PullRequest(
+            repository: "acme/widgets", number: 42, title: "Title",
+            author: "reviewer", url: "https://example.com/pr/42")
+        let changesRequestedJSON = """
+        {
+          "reviewDecision": "CHANGES_REQUESTED",
+          "reviews": [
+            {"id":"r1","state":"COMMENTED","submittedAt":"2026-07-24T00:00:00Z","author":{"login":"alice"}},
+            {"id":"r2","state":"CHANGES_REQUESTED","submittedAt":"2026-07-25T00:00:00Z","author":{"login":"bob"}}
+          ]
+        }
+        """
+
+        let item = try GitHubService.parseFeedbackDetails(
+            Data(changesRequestedJSON.utf8),
+            for: pr,
+            seenReviewID: "r1"
+        )
+
+        XCTAssertEqual(item?.status, .changesRequested)
+        XCTAssertEqual(item?.latestReview.reviewer, "bob")
+        XCTAssertEqual(item?.feedbackCount, 2)
+        XCTAssertEqual(item?.newFeedbackCount, 1)
+
+        let approvedJSON = """
+        {"reviewDecision":"APPROVED","reviews":[{"id":"r1","state":"APPROVED","submittedAt":"2026-07-25T00:00:00Z","author":{"login":"alice"}}]}
+        """
+        XCTAssertNil(try GitHubService.parseFeedbackDetails(Data(approvedJSON.utf8), for: pr, seenReviewID: nil))
+    }
+
+    func testParseFeedbackDetailsDetectsCommentedAndAwaitingApproval() throws {
+        let pr = PullRequest(
+            repository: "acme/widgets", number: 42, title: "Title",
+            author: "reviewer", url: "https://example.com/pr/42")
+        let commentedJSON = """
+        {"reviewDecision":"REVIEW_REQUIRED","reviews":[{"id":"r1","state":"COMMENTED","submittedAt":"2026-07-25T00:00:00Z","author":{"login":"alice"}}]}
+        """
+        let pendingJSON = """
+        {"reviewDecision":"REVIEW_REQUIRED","reviews":[{"id":"r1","state":"APPROVED","submittedAt":"2026-07-25T00:00:00Z","author":{"login":"alice"}}]}
+        """
+
+        XCTAssertEqual(
+            try GitHubService.parseFeedbackDetails(Data(commentedJSON.utf8), for: pr, seenReviewID: nil)?.status,
+            .commented
+        )
+        XCTAssertEqual(
+            try GitHubService.parseFeedbackDetails(Data(pendingJSON.utf8), for: pr, seenReviewID: nil)?.status,
+            .awaitingApproval
+        )
     }
 
     func testRequireCurrentHeadRejectsStaleReview() async throws {

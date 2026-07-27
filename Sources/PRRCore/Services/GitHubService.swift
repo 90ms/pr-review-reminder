@@ -18,6 +18,12 @@ public struct GitHubFetchResult: Sendable, Equatable {
     public let reachedSearchLimit: Bool
 }
 
+public struct GitHubFeedbackFetchResult: Sendable, Equatable {
+    public let feedbackItems: [PRFeedbackItem]
+    public let retryCount: Int
+    public let reachedSearchLimit: Bool
+}
+
 /// Extra per-PR details fetched on demand (not available from search).
 public struct PRDetails: Sendable, Equatable, Codable {
     public let body: String
@@ -114,8 +120,32 @@ public final class GitHubService: Sendable {
         return Command(executable: gh, arguments: args)
     }
 
+    public static func searchAuthoredPRsCommand(gh: String, owner: String, repositories: [String], limit: Int = 1_000) -> Command {
+        var args = ["search", "prs",
+                    "--author=@me",
+                    "--state=open",
+                    "--json", "number,title,url,updatedAt,author,repository",
+                    "--limit", String(limit)]
+        if repositories.isEmpty {
+            args += ["--owner", owner]
+        } else {
+            for repo in repositories {
+                let full = repo.contains("/") ? repo : "\(owner)/\(repo)"
+                args += ["--repo", full]
+            }
+        }
+        return Command(executable: gh, arguments: args)
+    }
+
     public static func reviewsCommand(gh: String, repository: String, number: Int) -> Command {
         Command(executable: gh, arguments: ["api", "repos/\(repository)/pulls/\(number)/reviews", "--paginate"])
+    }
+
+    public static func feedbackDetailsCommand(gh: String, repository: String, number: Int) -> Command {
+        Command(executable: gh, arguments: [
+            "pr", "view", String(number), "-R", repository,
+            "--json", "reviewDecision,reviews"
+        ])
     }
 
     public static func detailsCommand(gh: String, repository: String, number: Int) -> Command {
@@ -240,6 +270,70 @@ public final class GitHubService: Sendable {
         let deletions: Int
     }
 
+    private struct FeedbackDetailsDTO: Decodable {
+        struct Review: Decodable {
+            struct Author: Decodable { let login: String }
+            let id: String?
+            let author: Author?
+            let state: String
+            let submittedAt: String?
+        }
+        let reviewDecision: String?
+        let reviews: [Review]
+    }
+
+    public static func parseFeedbackDetails(
+        _ data: Data,
+        for pr: PullRequest,
+        seenReviewID: String?
+    ) throws -> PRFeedbackItem? {
+        let dto = try JSONDecoder().decode(FeedbackDetailsDTO.self, from: data)
+        guard dto.reviewDecision != "APPROVED" else { return nil }
+
+        let iso = ISO8601DateFormatter()
+        let formalStates = Set(["COMMENTED", "CHANGES_REQUESTED", "APPROVED"])
+        let reviews = dto.reviews.compactMap { review -> PRReviewFeedback? in
+            guard formalStates.contains(review.state),
+                  let submittedAt = review.submittedAt.flatMap({ iso.date(from: $0) }) else {
+                return nil
+            }
+            let id = review.id ?? "\(review.author?.login ?? "unknown")-\(review.state)-\(review.submittedAt ?? "")"
+            return PRReviewFeedback(
+                id: id,
+                reviewer: review.author?.login ?? "unknown",
+                state: review.state,
+                submittedAt: submittedAt
+            )
+        }
+        .sorted { $0.submittedAt < $1.submittedAt }
+        guard let latest = reviews.max(by: { $0.submittedAt < $1.submittedAt }) else { return nil }
+
+        let status: PRFeedbackStatus
+        if dto.reviewDecision == "CHANGES_REQUESTED" {
+            status = .changesRequested
+        } else if latest.state == "COMMENTED" {
+            status = .commented
+        } else {
+            status = .awaitingApproval
+        }
+
+        let newFeedbackCount: Int
+        if let seenReviewID {
+            newFeedbackCount = reviews.suffix(fromLastMatchingID: seenReviewID).count
+        } else {
+            newFeedbackCount = reviews.count
+        }
+
+        return PRFeedbackItem(
+            pr: pr,
+            reviewDecision: dto.reviewDecision,
+            status: status,
+            latestReview: latest,
+            feedbackCount: reviews.count,
+            newFeedbackCount: newFeedbackCount
+        )
+    }
+
     // MARK: - Async operations
 
     public func currentLogin() async throws -> String {
@@ -274,6 +368,78 @@ public final class GitHubService: Sendable {
             pullRequests: pullRequests,
             retryCount: max(0, execution.attempts - 1),
             reachedSearchLimit: pullRequests.count >= 1_000
+        )
+    }
+
+    public func fetchAuthoredFeedbackResult(
+        settings: AppSettings,
+        seenReviewIDsByPR: [String: String],
+        maxConcurrent: Int = 4
+    ) async throws -> GitHubFeedbackFetchResult {
+        let execution = try await runRead(Self.searchAuthoredPRsCommand(
+            gh: gh,
+            owner: settings.owner,
+            repositories: settings.repositories
+        ))
+        let pullRequests = try Self.parsePullRequests(Data(execution.result.stdout.utf8))
+        let feedbackItems = try await fetchFeedbackDetails(
+            pullRequests,
+            seenReviewIDsByPR: seenReviewIDsByPR,
+            maxConcurrent: maxConcurrent
+        )
+        return GitHubFeedbackFetchResult(
+            feedbackItems: feedbackItems.sorted {
+                $0.latestReview.submittedAt > $1.latestReview.submittedAt
+            },
+            retryCount: max(0, execution.attempts - 1),
+            reachedSearchLimit: pullRequests.count >= 1_000
+        )
+    }
+
+    public func fetchFeedbackDetails(
+        _ pullRequests: [PullRequest],
+        seenReviewIDsByPR: [String: String],
+        maxConcurrent: Int = 4
+    ) async throws -> [PRFeedbackItem] {
+        guard !pullRequests.isEmpty else { return [] }
+        let concurrency = max(1, min(maxConcurrent, pullRequests.count))
+        return try await withThrowingTaskGroup(of: PRFeedbackItem?.self) { group in
+            var iterator = pullRequests.makeIterator()
+            for _ in 0..<concurrency {
+                guard let pr = iterator.next() else { break }
+                group.addTask { [self] in
+                    try await fetchFeedbackDetail(
+                        pr,
+                        seenReviewID: seenReviewIDsByPR[pr.id]
+                    )
+                }
+            }
+
+            var result: [PRFeedbackItem] = []
+            while let item = try await group.next() {
+                if let item { result.append(item) }
+                if let pr = iterator.next() {
+                    group.addTask { [self] in
+                        try await fetchFeedbackDetail(
+                            pr,
+                            seenReviewID: seenReviewIDsByPR[pr.id]
+                        )
+                    }
+                }
+            }
+            return result
+        }
+    }
+
+    public func fetchFeedbackDetail(_ pr: PullRequest, seenReviewID: String?) async throws -> PRFeedbackItem? {
+        let result = try await runRead(Self.feedbackDetailsCommand(gh: gh, repository: pr.repository, number: pr.number)).result
+        guard result.succeeded else {
+            throw GitHubError("gh pr view failed: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+        return try Self.parseFeedbackDetails(
+            Data(result.stdout.utf8),
+            for: pr,
+            seenReviewID: seenReviewID
         )
     }
 
@@ -392,5 +558,14 @@ public final class GitHubService: Sendable {
         let result = try await runner.run(Self.approveCommand(gh: gh, repository: pr.repository, number: pr.number, body: body))
         guard result.succeeded else { throw GitHubError("approve failed: \(result.stderr)") }
         return result
+    }
+}
+
+private extension Array where Element == PRReviewFeedback {
+    func suffix(fromLastMatchingID seenReviewID: String) -> ArraySlice<PRReviewFeedback> {
+        guard let index = lastIndex(where: { $0.id == seenReviewID }) else {
+            return self[...]
+        }
+        return self[index...].dropFirst()
     }
 }
