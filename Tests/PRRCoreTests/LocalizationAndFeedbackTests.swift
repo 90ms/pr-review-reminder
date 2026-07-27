@@ -62,8 +62,20 @@ final class LocalizationAndFeedbackTests: XCTestCase {
 
     // AC14 — issue command construction.
     func testCreateIssueCommand() {
-        let cmd = FeedbackService.createIssueCommand(gh: "/usr/bin/gh", repository: "acme/app", title: "Bug", body: "It broke")
-        XCTAssertEqual(cmd.arguments, ["issue", "create", "-R", "acme/app", "--title", "Bug", "--body", "It broke"])
+        let cmd = FeedbackService.createIssueCommand(
+            gh: "/usr/bin/gh",
+            repository: "acme/app",
+            title: "Bug",
+            body: "It broke",
+            labels: ["codex-ready", "bug"]
+        )
+        XCTAssertEqual(
+            cmd.arguments,
+            [
+                "issue", "create", "-R", "acme/app", "--title", "Bug", "--body", "It broke",
+                "--label", "codex-ready", "--label", "bug",
+            ]
+        )
         let view = FeedbackService.viewIssueCommand(gh: "/usr/bin/gh", repository: "acme/app", number: 42)
         XCTAssertEqual(
             view.arguments,
@@ -72,9 +84,22 @@ final class LocalizationAndFeedbackTests: XCTestCase {
                 "number,title,state,stateReason,url,updatedAt,closedAt",
             ]
         )
-        let preview = FeedbackService.previewString(gh: "gh", repository: "acme/app", title: "A B", body: "line1\nline2")
+        let preview = FeedbackService.previewString(
+            gh: "gh",
+            repository: "acme/app",
+            title: "A B",
+            body: "line1\nline2",
+            labels: ["codex-ready", "question"]
+        )
         XCTAssertTrue(preview.contains("issue create"))
         XCTAssertTrue(preview.contains("\"A B\""))
+        XCTAssertTrue(preview.contains("--label codex-ready"))
+    }
+
+    func testFeedbackLabelsAlwaysIncludeCodexReadyAndClassification() {
+        XCTAssertEqual(FeedbackService.labels(for: .bug), ["codex-ready", "bug"])
+        XCTAssertEqual(FeedbackService.labels(for: .enhancement), ["codex-ready", "enhancement"])
+        XCTAssertEqual(FeedbackService.labels(for: .question), ["codex-ready", "question"])
     }
 
     // AC15 — tidy JSON parse + fallback.
@@ -176,9 +201,11 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         let mock = MockProcessRunner()
         let ai = AIService(runner: mock, claudePath: "/bin/claude", codexPath: nil)
         let feedback = FeedbackService(github: nil, ai: ai)
-        let result = try? await feedback.submit(title: "Hi", body: "there", ghPath: "/usr/bin/gh")
+        let result = try? await feedback.submit(title: "Hi", body: "there", classification: .question, ghPath: "/usr/bin/gh")
         guard case .held(let preview) = result else { return XCTFail("expected held") }
         XCTAssertTrue(preview.contains("90ms/pr-review-reminder"))
+        XCTAssertTrue(preview.contains("--label codex-ready"))
+        XCTAssertTrue(preview.contains("--label question"))
         XCTAssertTrue(mock.commands.isEmpty, "nothing should be executed when held")
     }
 
@@ -193,7 +220,7 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         let ai = AIService(runner: mock, claudePath: "/bin/claude", codexPath: nil)
         let feedback = FeedbackService(github: github, ai: ai)
 
-        let result = try? await feedback.submit(title: "Bug", body: "It broke", ghPath: "/usr/bin/gh")
+        let result = try? await feedback.submit(title: "Bug", body: "It broke", classification: .bug, ghPath: "/usr/bin/gh")
 
         guard case .created(let output, let record?) = result else {
             return XCTFail("expected created")
@@ -209,7 +236,36 @@ final class LocalizationAndFeedbackTests: XCTestCase {
             [
                 "issue", "create", "-R", "90ms/pr-review-reminder",
                 "--title", "Bug", "--body", "It broke",
+                "--label", "codex-ready", "--label", "bug",
             ]
         )
+    }
+
+    func testSubmitRetriesWithoutLabelsWhenLabelCreateFails() async {
+        let mock = MockProcessRunner()
+        mock.responder = { command in
+            if command.arguments.contains("--label") {
+                return CommandResult(exitCode: 1, stdout: "", stderr: "could not add label")
+            }
+            return CommandResult(
+                exitCode: 0,
+                stdout: "https://github.com/90ms/pr-review-reminder/issues/124\n",
+                stderr: ""
+            )
+        }
+        let github = GitHubService(runner: mock, ghPath: "/usr/bin/gh")
+        let ai = AIService(runner: mock, claudePath: "/bin/claude", codexPath: nil)
+        let feedback = FeedbackService(github: github, ai: ai)
+
+        let result = try? await feedback.submit(title: "Question", body: "How?", classification: .question, ghPath: "/usr/bin/gh")
+
+        guard case .created(let output, let record?) = result else {
+            return XCTFail("expected created")
+        }
+        XCTAssertEqual(output, "https://github.com/90ms/pr-review-reminder/issues/124")
+        XCTAssertEqual(record.number, 124)
+        XCTAssertEqual(mock.commands.count, 2)
+        XCTAssertTrue(mock.commands[0].arguments.contains("--label"))
+        XCTAssertFalse(mock.commands[1].arguments.contains("--label"))
     }
 }

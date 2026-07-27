@@ -10,6 +10,7 @@ public struct FeedbackView: View {
     @State private var createdURL: String?
     @State private var busy = false
     @State private var refreshingHistory = false
+    @State private var classification: FeedbackService.ClassificationLabel = .question
 
     public init() {}
 
@@ -25,6 +26,13 @@ public struct FeedbackView: View {
                 .font(.callout)
                 .frame(minHeight: 140)
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(.quaternary))
+
+            Picker(app.l("fb_label"), selection: $classification) {
+                ForEach(FeedbackService.ClassificationLabel.allCases) { label in
+                    Text(app.l(label.localizationKey)).tag(label)
+                }
+            }
+            .pickerStyle(.segmented)
 
             if let preview {
                 VStack(alignment: .leading, spacing: 4) {
@@ -105,7 +113,7 @@ public struct FeedbackView: View {
                 Button {
                     Task {
                         busy = true
-                        let result = await app.submitFeedback(title: title, body: body_)
+                        let result = await app.submitFeedback(title: title, body: body_, classification: classification)
                         switch result {
                         case .held(let p): preview = p; createdURL = nil
                         case .created(let out, _):

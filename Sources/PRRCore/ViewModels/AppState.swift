@@ -738,11 +738,20 @@ public final class AppState: ObservableObject {
     }
 
     /// Submit feedback to this project's GitHub issue tracker.
-    public func submitFeedback(title: String, body: String) async -> FeedbackService.SubmitResult? {
+    public func submitFeedback(
+        title: String,
+        body: String,
+        classification: FeedbackService.ClassificationLabel = .question
+    ) async -> FeedbackService.SubmitResult? {
         let github = ghPath.map { GitHubService(runner: runner, ghPath: $0) }
         let feedback = FeedbackService(github: github, ai: makeAIService())
         do {
-            let result = try await feedback.submit(title: title, body: body, ghPath: ghPath)
+            let result = try await feedback.submit(
+                title: title,
+                body: body,
+                classification: classification,
+                ghPath: ghPath
+            )
             if case .created(_, let record?) = result {
                 feedbackHistory.upsert(record)
                 feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
