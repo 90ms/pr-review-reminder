@@ -13,6 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their labels, title, author, and a short description excerpt.
 - A repository-local `$validate-github-prs` skill reviews individual and combined
   PR changes for merge and release readiness without changing GitHub state.
+- Review prompts can compose a base template with one or more persisted skill
+  files, and inline comment previews remain editable and individually removable.
+- Dependabot monitors GitHub Actions, Python, and container dependencies, while
+  CodeQL scans the Swift and Python code paths.
+
+### Changed
+
+- AI CLI runs use an isolated temporary working directory, a minimal inherited
+  environment, finite timeouts, and read-only/non-writing tool restrictions.
+- External GitHub and dependency-diagnostic commands now have explicit finite
+  timeouts.
+
+### Fixed
+
+- Configured review skill files that cannot be read, or templates missing the
+  required `{{SKILL}}` placeholder, now stop analysis with a visible error.
+- Feedback issue creation retries without labels only for label-specific errors
+  and keeps the result visible with a warning listing omitted labels.
+- Editing or deleting the first, middle, or last inline comment no longer risks
+  changing a neighboring comment because preview rows now use stable identities.
+- AI analysis preserves its timeout when the final stdin command is assembled.
 
 ## [0.4.0] - 2026-07-27
 

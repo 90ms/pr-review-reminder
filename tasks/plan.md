@@ -37,6 +37,8 @@
 | 설정·재리뷰 | 탭 기반 설정 탐색, 완료된 PR의 현재 head/diff 재리뷰 | AppState 테스트 + main CI |
 | 내 PR 피드백 | 미승인 정식 review 인박스, 상태 구분, 중복 없는 새 피드백 알림 | 서비스/AppState 테스트 + main CI |
 | 의견 히스토리 | 등록 이슈 보존, 상태 갱신, 성공 후 폼 초기화·창 닫기 | 저장소/AppState 테스트 + main CI |
+| 릴리스 전 하드닝 | AI 실행 격리·최소 환경·timeout, 스킬 파일 fail-closed, 라벨 폴백 경고, 인라인 stable ID | 서비스/UI 테스트 + main CI |
+| 공급망 보안 | Dependabot 다중 생태계 업데이트와 Swift/Python CodeQL 스캔 | Dependabot + CodeQL workflow |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
@@ -56,7 +58,8 @@
 ## 커밋·검증 원칙
 
 1. 기능, 테스트, 문서는 검토 가능한 독립 커밋으로 유지한다.
-2. 쓰기 명령은 자동 재시도하지 않는다.
+2. 쓰기 명령은 일반 오류에서 자동 재시도하지 않는다. 피드백 이슈의 라벨 전용
+   오류만 라벨 없이 한 번 재시도하고 누락 라벨을 사용자에게 표시한다.
 3. 각 커밋은 `git diff --check`와 관련 테스트를 통과해야 한다.
 4. `main`은 다음 CI를 항상 통과해야 한다.
 
