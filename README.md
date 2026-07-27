@@ -129,6 +129,8 @@ pr-review-reminder --doctor
 - 인증 정보는 저장하지 않고 설치된 CLI의 인증 세션을 사용합니다.
 - 히스토리를 켜면 PR 본문, diff, AI 결과와 사용량을
   `~/Library/Application Support/PRReviewReminder/history.json`에 저장합니다.
+- 등록한 피드백 이슈의 제목·본문·URL·상태는 `UserDefaults`에, 내 PR 피드백의 마지막
+  확인 review ID는 Application Support의 `feedback-seen.json`에 저장합니다.
 - 히스토리 저장을 끄거나 보존 기간을 설정하고 앱에서 전체 삭제할 수 있습니다.
 - 설정의 **로컬 저장소**에서 설정·히스토리 위치, 크기, 마지막 저장 시각과 오류를
   확인할 수 있습니다. 손상된 히스토리 JSON은 별도 파일로 백업한 뒤 안전하게 복구합니다.

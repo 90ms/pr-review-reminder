@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Separate inboxes for pull requests awaiting my review and unapproved formal
+  review feedback on pull requests I authored, including status classification,
+  new-feedback counts, duplicate notification suppression, and direct GitHub links.
+- Local history for submitted feedback issues with open, closed, and resolved
+  status refresh; successful submission now clears the form and closes its window.
 - Completed PR reviews now expose a direct "Review again" action that fetches
   the current PR head and diff before running a fresh analysis.
 - Settings are grouped into General, Review, Automation, and Data tabs.
@@ -29,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Pull request refresh now preserves completed analysis while updating current
+  pull request metadata.
+- Feedback issue status refresh continues updating other records when one issue
+  lookup fails.
 - The Synology image now installs GitHub CLI from its official signed apt
   repository and verifies persistent headless-login support instead of using
   Debian's outdated community package.

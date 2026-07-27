@@ -1,6 +1,6 @@
 # 실행 계획 — PR Review Reminder
 
-> 상태 기준일: 2026-07-26. 완료된 구현과 남은 운영 작업을 구분한다.
+> 상태 기준일: 2026-07-27. 완료된 구현과 남은 운영 작업을 구분한다.
 
 기준 계약은 [`docs/SPEC.md`](../docs/SPEC.md)다. 모든 GitHub 쓰기는 사용자의
 명시적 액션으로만 시작하며 테스트와 CI에서는 실제 게시하지 않는다.
@@ -33,6 +33,9 @@
 | 릴리스 스킬 | 버전 준비, 승인 게이트, Release와 tap 검증 절차 | skill validator + main CI |
 | 이슈 구현 자동화 | Slack 승인, 분리된 Controller/Runner, 제한 egress, Draft PR, CI 알림, 만료 lease 복구 | Python 테스트 + Synology dry-run |
 | Runner 관찰성 | job 단계·독립 heartbeat, Slack 자동 상태판·수동 새로고침·단일 경고 | Python 테스트 + Synology 검증 대상 |
+| 설정·재리뷰 | 탭 기반 설정 탐색, 완료된 PR의 현재 head/diff 재리뷰 | AppState 테스트 + main CI |
+| 내 PR 피드백 | 미승인 정식 review 인박스, 상태 구분, 중복 없는 새 피드백 알림 | 서비스/AppState 테스트 + main CI |
+| 의견 히스토리 | 등록 이슈 보존, 상태 갱신, 성공 후 폼 초기화·창 닫기 | 저장소/AppState 테스트 + main CI |
 | 문서 | README, SPEC, CHANGELOG, 소개·릴리스 문서 | 구현과 상호 검토 |
 
 ## 다음 마일스톤
@@ -48,27 +51,6 @@
 
 체크 항목과 증적 위치는
 [`docs/MACOS_VALIDATION.md`](../docs/MACOS_VALIDATION.md)에 유지한다.
-
-### P1 — 내가 작성한 PR의 피드백 인박스 (완료)
-
-현재 제품은 `review-requested:@me` 리뷰 요청 인박스와
-`author:@me` 미승인 피드백 인박스를 분리한다. 피드백 인박스는 내가 작성한 PR에
-정식 리뷰가 도착했지만 GitHub의 최종 `reviewDecision`이 아직 `APPROVED`가 아닌
-항목을 읽기 전용으로 제공한다.
-
-권장 MVP:
-
-- `author:@me`, 열린 PR, 정식 review 1건 이상, `reviewDecision != APPROVED`
-- 기존 “내가 리뷰할 PR”과 별도 탭
-- 변경 요청, 코멘트 도착, 승인 대기 상태 구분
-- 최신 review ID를 기준으로 중복 없는 알림
-- 읽기 전용이며 자동 응답이나 GitHub 쓰기를 추가하지 않음
-
-구현 전 결정할 항목은 일반 issue comment와 봇 리뷰의 포함 여부, 탭/섹션 UI,
-중복 항목 처리 방식이다.
-
-완료 조건: 두 인박스를 명확히 구분하고, 실패 시 기존 결과를 보존하며, 새로운
-피드백 알림을 같은 이벤트에 중복 발송하지 않는다.
 
 ## 커밋·검증 원칙
 

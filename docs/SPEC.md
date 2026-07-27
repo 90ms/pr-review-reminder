@@ -3,7 +3,7 @@
 > macOS 메뉴바에서 리뷰 요청을 모으고, 사용자의 로컬 `claude` 또는 `codex`
 > CLI로 리뷰 초안을 만든 뒤, 사용자가 확인한 내용만 GitHub에 게시한다.
 
-- 기준일: 2026-07-26
+- 기준일: 2026-07-27
 - 대상 플랫폼: macOS 14+
 - 문서 성격: 현재 구현의 계약. 향후 작업은 [`tasks/plan.md`](../tasks/plan.md)에 둔다.
 
@@ -74,6 +74,7 @@ diff 조회 실패 시 원인과 재시도를 표시한다. 게시 시 미리보
   `90ms/pr-review-reminder` GitHub 이슈를 만들며, `gh`를 사용할 수 없으면 실행할
   명령만 미리보기로 보여준다. 등록된 피드백 이슈는 로컬 히스토리에 저장하고,
   사용자가 새로고침하면 `gh issue view`로 open/closed/resolved 상태를 확인한다.
+  개별 이슈 조회 실패는 표시하되 다른 이슈의 상태 갱신은 계속한다.
 - 이전 세션이 정상 종료 표식을 남기지 못했다면 다음 실행에서 이를 알린다. 사용자는
   앱 버전·실행 시각·OS 버전만 포함한 진단 초안을 검토하고 명시적으로 이슈를 제출하거나
   폐기할 수 있다. 살아 있는 중복 프로세스는 충돌로 판정하지 않는다.
@@ -164,6 +165,9 @@ Homebrew 설치본은 설정에서 사용자가 요청할 때 Formula 정보를 
 
 - 설정: `UserDefaults`
 - 예약 실행 이력: `UserDefaults`(최근 20건)
+- 등록한 피드백 이슈 이력: `UserDefaults`
+- 내 PR 피드백의 마지막 확인 review ID:
+  `Application Support/PRReviewReminder/feedback-seen.json`
 - 리뷰 히스토리: `Application Support/PRReviewReminder/history.json`
 - 히스토리 파일 권한: 현재 사용자 읽기/쓰기
 - 히스토리 식별자: `repository#number@headSha`
@@ -185,7 +189,7 @@ flowchart LR
     subgraph Core["PRRCore"]
         Runner["ProcessRunning<br/>SystemProcessRunner"]
         Services["서비스<br/>GitHub · AI · Feedback<br/>Doctor · Scheduler"]
-        Stores["로컬 저장소<br/>Settings · History"]
+        Stores["로컬 저장소<br/>Settings · Review History<br/>Feedback History · Seen Reviews"]
         State["AppState<br/>오케스트레이션·화면 상태"]
         Views["SwiftUI Views<br/>메뉴 · 상세 · Diff<br/>설정 · 히스토리 · 피드백"]
     end
@@ -243,6 +247,7 @@ flowchart LR
 | AC34 | 충돌 진단은 민감한 로그를 자동 첨부하거나 이슈를 자동 게시하지 않는다. |
 | AC35 | 내가 작성한 열린 PR 중 정식 리뷰가 있고 GitHub `reviewDecision != APPROVED`인 항목을 별도 피드백 인박스로 표시한다. |
 | AC36 | 내 PR 피드백 인박스는 변경 요청, 코멘트 도착, 승인 대기를 구분하고 같은 리뷰 피드백 알림을 중복 발송하지 않는다. |
+| AC37 | 등록한 피드백 이슈의 상태를 보존·갱신하고, 개별 조회 실패가 다른 이슈의 갱신을 막지 않는다. |
 
 ## 7. 검증
 
