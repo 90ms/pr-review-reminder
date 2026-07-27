@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-27
+
 ### Fixed
 
 - External commands inherit the app's environment unless a command explicitly
@@ -195,7 +197,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editable inline comments, review preview, and explicit publishing controls.
 - Review history, cached results, scheduling, notifications, and localization.
 
-[Unreleased]: https://github.com/90ms/pr-review-reminder/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/90ms/pr-review-reminder/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/90ms/pr-review-reminder/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/90ms/pr-review-reminder/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/90ms/pr-review-reminder/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/90ms/pr-review-reminder/compare/v0.3.0...v0.3.1
