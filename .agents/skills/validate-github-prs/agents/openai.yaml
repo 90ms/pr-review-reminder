@@ -1,0 +1,4 @@
+interface:
+  display_name: "Validate GitHub PRs"
+  short_description: "Review PRs together for merge and release readiness"
+  default_prompt: "Use $validate-github-prs to assess the open pull requests for combined merge and release readiness."

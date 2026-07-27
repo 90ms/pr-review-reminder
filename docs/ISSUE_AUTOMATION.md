@@ -8,15 +8,16 @@
 
 자동화는 다음 흐름을 제공한다.
 
-1. NAS 스케줄러 또는 수동 명령이 `codex-ready` 이슈를 찾는다.
-2. Slack 채널에 이슈 요약과 **구현 시작** 버튼을 보낸다.
-3. 허용된 Slack 사용자가 버튼을 누르면 이슈를 다시 검증하고 작업을 예약한다.
-4. Controller가 시작 알림을 Slack에 보내고 최신 `main`을 별도 작업 디렉터리에
+1. NAS 스케줄러 또는 수동 명령이 새 이슈와 `codex-ready` 이슈를 찾는다.
+2. 새 이슈를 같은 Slack 채널에 라벨, 제목과 설명 요약으로 알린다.
+3. `codex-ready` 이슈에는 이 요약과 **구현 시작** 버튼을 함께 보낸다.
+4. 허용된 Slack 사용자가 버튼을 누르면 이슈를 다시 검증하고 작업을 예약한다.
+5. Controller가 시작 알림을 Slack에 보내고 최신 `main`을 별도 작업 디렉터리에
    준비해 승인된 작업을 파일 queue에 넣는다.
-5. 격리 Runner의 Codex가 구현, 테스트, 관련 문서 갱신과 커밋을 수행한다.
-6. Controller가 결과와 저장소 경계를 검증하고 브랜치를 푸시해 Draft PR을 만든다.
+6. 격리 Runner의 Codex가 구현, 테스트, 관련 문서 갱신과 커밋을 수행한다.
+7. Controller가 결과와 저장소 경계를 검증하고 브랜치를 푸시해 Draft PR을 만든다.
    완료·실패·차단 결과는 원본 승인 메시지의 브로드캐스트 답글로 알린다.
-7. GitHub Actions 결과도 같은 Slack 스레드와 원본 상태 메시지에 반영한다.
+8. GitHub Actions 결과도 같은 Slack 스레드와 원본 상태 메시지에 반영한다.
 
 자동 병합, 자동 릴리스, GitHub review·approval 게시, 승인되지 않은 이슈 실행은
 범위에 포함하지 않는다. Synology Linux에서는 macOS SwiftUI 앱을 완전히 빌드할 수
@@ -221,6 +222,8 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 표시한다. 토큰, 전체 환경 변수, 인증 파일 내용이나 민감한 CLI 출력을 보내지 않는다.
 
 - 스캔 실패: 상태를 변경하지 않고 다음 주기에 재시도한다.
+- 일반 이슈 알림은 SQLite에 별도로 기록하며, 기능을 처음 시작하기 전에 생성된
+  열린 이슈는 소급 알림하지 않는다.
 - Slack 전송 실패: `codex-notified`를 붙이지 않는다.
 - Codex 실패/timeout: `codex-failed`로 전환하고 Slack 재시도를 기다린다.
 - 보호 경로 또는 불명확한 요구: `codex-blocked`로 전환하고 원인과 재시도 버튼을
@@ -235,6 +238,7 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 
 - `$implement-github-issue` 저장소 스킬과 구조화 완료 보고
 - 설정, GitHub CLI gateway, SQLite lease와 단일 작업 큐
+- 새 GitHub 이슈의 라벨·제목·설명 요약 알림과 별도 SQLite 중복 방지
 - Slack Socket Mode 알림, 허용 사용자 승인, 실행 생명주기 알림과 실패·차단 재시도
 - SQLite 단계 저장, Runner 독립 heartbeat, Slack 실시간 상태와 수동 새로고침
 - 격리 clone, Codex timeout, 보호 경로 검사, branch push와 Draft PR
@@ -242,6 +246,10 @@ Slack에는 이슈 번호, 현재 단계, 짧은 오류, 로그 식별자와 가
 - 만료 lease 복구와 중복 알림·중복 실행 방지
 - Docker/Compose, Slack manifest, 라벨 설정 스크립트와 Synology 운영 가이드
 - Python 단위 테스트와 GitHub Actions 자동 검증
+
+생성된 Draft PR들의 병합 순서와 통합 결과는 저장소의 `$validate-github-prs` 스킬로
+수동 검증할 수 있다. 이 스킬은 읽기 전용 GitHub 조회와 임시 worktree를 사용하며
+review, approval, comment, push 또는 merge를 게시하지 않는다.
 
 ## 실행 관찰성
 

@@ -122,7 +122,9 @@ class SlackAutomation:
     def scan_once(self) -> int:
         self._recover_stale_jobs()
         notified = 0
-        for issue in self.github.list_issues(self.worker.config.ready_label):
+        ready_issues = self.github.list_issues(self.worker.config.ready_label)
+        ready_issue_numbers = {issue.number for issue in ready_issues}
+        for issue in ready_issues:
             if _NOTIFIED_LABEL in issue.labels or not self.state.needs_notification(
                 issue.number
             ):
@@ -137,6 +139,26 @@ class SlackAutomation:
             message_ts = str(response["ts"])
             if self.state.record_notification(issue.number, message_ts):
                 self.github.add_labels(issue.number, [_NOTIFIED_LABEL])
+                self.state.record_issue_announcement(issue.number, message_ts)
+                notified += 1
+        for issue in self.github.list_issues():
+            if (
+                issue.number in ready_issue_numbers
+                or not self.state.needs_issue_announcement(
+                    issue.number, issue.created_at
+                )
+            ):
+                continue
+            response = self.client.chat_postMessage(
+                channel=self.settings.channel_id,
+                text=_issue_announcement_text(issue),
+                blocks=_issue_announcement_blocks(issue),
+                unfurl_links=False,
+                unfurl_media=False,
+            )
+            if self.state.record_issue_announcement(
+                issue.number, str(response["ts"])
+            ):
                 notified += 1
         return notified
 
@@ -674,12 +696,24 @@ def _status_blocks(
 ) -> list[dict[str, Any]]:
     title = html.escape(_truncate(issue.title, 220))
     author = html.escape(issue.author)
+    labels = _issue_labels(issue)
+    description = _issue_description(issue)
     blocks: list[dict[str, Any]] = [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*<{issue.url}|#{issue.number} {title}>*\n작성자: `{author}`",
+                "text": (
+                    f"*<{issue.url}|#{issue.number} {title}>*\n"
+                    f"작성자: `{author}` · 라벨: {labels}"
+                ),
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*설명 요약*\n{description}",
             },
         },
         {
@@ -730,6 +764,56 @@ def _status_blocks(
             }
         )
     return blocks
+
+
+def _issue_announcement_text(issue: Issue) -> str:
+    return (
+        f"새 GitHub 이슈 #{issue.number}: "
+        f"{_truncate(_plain_text(issue.title), 220)} · "
+        f"라벨: "
+        f"{_truncate(_plain_text(', '.join(sorted(issue.labels)) or '없음'), 500)} · "
+        f"{_truncate(_plain_text(issue.body) or '설명 없음', 500)}"
+    )
+
+
+def _issue_announcement_blocks(issue: Issue) -> list[dict[str, Any]]:
+    title = html.escape(_truncate(issue.title, 220))
+    author = html.escape(issue.author)
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f":new: *새 GitHub 이슈 · "
+                    f"<{issue.url}|#{issue.number} {title}>*\n"
+                    f"작성자: `{author}` · 라벨: {_issue_labels(issue)}"
+                ),
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*설명 요약*\n{_issue_description(issue)}",
+            },
+        },
+    ]
+
+
+def _issue_labels(issue: Issue) -> str:
+    if not issue.labels:
+        return "없음"
+    return html.escape(_truncate(" · ".join(sorted(issue.labels)), 500))
+
+
+def _issue_description(issue: Issue) -> str:
+    description = _plain_text(issue.body)
+    return html.escape(_truncate(description or "설명 없음", 700))
+
+
+def _plain_text(value: str) -> str:
+    return " ".join(value.split())
 
 
 def _required(values: Mapping[str, str], name: str) -> str:

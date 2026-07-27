@@ -31,7 +31,8 @@
 | 릴리스 연계 | 태그 릴리스 후 검토 가능한 tap Formula PR 생성 | Release/tap CI |
 | 충돌 진단 | 비정상 종료 감지, 중복 실행 제외, 사용자 동의형 이슈 초안 | 저장소 테스트 + main CI |
 | 릴리스 스킬 | 버전 준비, 승인 게이트, Release와 tap 검증 절차 | skill validator + main CI |
-| 이슈 구현 자동화 | Slack 승인, 분리된 Controller/Runner, 제한 egress, Draft PR, CI 알림, 만료 lease 복구 | Python 테스트 + Synology dry-run |
+| 이슈 구현 자동화 | 새 이슈 Slack 요약, 승인, 분리된 Controller/Runner, 제한 egress, Draft PR, CI 알림, 만료 lease 복구 | Python 테스트 + Synology dry-run |
+| PR 통합 검증 스킬 | 개별·다중 PR 검토, 순서별 임시 병합, 통합 테스트, merge/release 준비 판정 | skill validator + 실제 Draft PR dry-run |
 | Runner 관찰성 | job 단계·독립 heartbeat, Slack 자동 상태판·수동 새로고침·단일 경고 | Python 테스트 + Synology 검증 대상 |
 | 설정·재리뷰 | 탭 기반 설정 탐색, 완료된 PR의 현재 head/diff 재리뷰 | AppState 테스트 + main CI |
 | 내 PR 피드백 | 미승인 정식 review 인박스, 상태 구분, 중복 없는 새 피드백 알림 | 서비스/AppState 테스트 + main CI |

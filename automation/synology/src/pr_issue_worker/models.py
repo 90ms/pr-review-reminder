@@ -30,6 +30,7 @@ class Issue:
     url: str
     author: str
     labels: frozenset[str] = field(default_factory=frozenset)
+    created_at: str | None = None
 
 
 @dataclass(frozen=True)

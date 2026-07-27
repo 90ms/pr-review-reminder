@@ -24,21 +24,20 @@ class GitHubClient:
         self.runner = runner
         self.gh_bin = gh_bin
 
-    def list_issues(self, label: str) -> list[Issue]:
-        result = self._run(
-            [
-                "issue",
-                "list",
-                "--state",
-                "open",
-                "--label",
-                label,
-                "--limit",
-                "100",
-                "--json",
-                "number,title,body,url,author,labels",
-            ]
-        )
+    def list_issues(self, label: str | None = None) -> list[Issue]:
+        arguments = [
+            "issue",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,title,body,url,author,labels,createdAt",
+        ]
+        if label is not None:
+            arguments.extend(["--label", label])
+        result = self._run(arguments)
         return [_parse_issue(item) for item in json.loads(result)]
 
     def get_issue(self, issue_number: int) -> Issue:
@@ -206,5 +205,10 @@ def _parse_issue(value: dict[str, object]) -> Issue:
         labels=frozenset(
             str(label["name"])
             for label in labels_value  # type: ignore[index]
+        ),
+        created_at=(
+            str(value["createdAt"])
+            if value.get("createdAt") is not None
+            else None
         ),
     )
