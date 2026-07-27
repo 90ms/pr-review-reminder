@@ -449,6 +449,54 @@ final class AppStateTests: XCTestCase {
         XCTAssertNotNil(state.feedbackRecords.first?.lastCheckedAt)
     }
 
+    func testFeedbackHistoryRefreshContinuesAfterIndividualFailure() async {
+        let feedbackHistory = FeedbackHistoryStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "feedback.partial-refresh"
+        )
+        feedbackHistory.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 1,
+            title: "Refresh succeeds",
+            body: "Body",
+            url: "https://github.com/90ms/pr-review-reminder/issues/1",
+            createdAt: Date(timeIntervalSince1970: 100)
+        ))
+        feedbackHistory.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 2,
+            title: "Refresh fails",
+            body: "Body",
+            url: "https://github.com/90ms/pr-review-reminder/issues/2",
+            createdAt: Date(timeIntervalSince1970: 200)
+        ))
+        let (state, _) = await makeState(feedbackHistory: feedbackHistory) { command in
+            guard command.arguments.prefix(2) == ["issue", "view"] else {
+                return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+            }
+            if command.arguments.contains("2") {
+                return CommandResult(exitCode: 1, stdout: "", stderr: "not found")
+            }
+            return CommandResult(
+                exitCode: 0,
+                stdout: #"{"title":"Refreshed","state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/90ms/pr-review-reminder/issues/1","updatedAt":"2026-07-26T10:00:00Z","closedAt":"2026-07-26T10:30:00Z"}"#,
+                stderr: ""
+            )
+        }
+
+        await state.refreshFeedbackHistory()
+
+        XCTAssertEqual(
+            state.feedbackRecords.first(where: { $0.number == 1 })?.state,
+            .closed
+        )
+        XCTAssertEqual(
+            state.feedbackRecords.first(where: { $0.number == 2 })?.state,
+            .open
+        )
+        XCTAssertTrue(state.lastError?.contains("not found") == true)
+    }
+
     func testUserCancellationTransitionsReviewState() async {
         let settingsStore = SettingsStore(
             store: AppStateMemoryKeyValueStore(),

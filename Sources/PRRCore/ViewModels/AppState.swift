@@ -726,23 +726,22 @@ public final class AppState: ObservableObject {
             return
         }
         let github = GitHubService(runner: runner, ghPath: ghPath)
-        do {
-            for var record in feedbackHistory.all() {
+        var refreshErrors: [String] = []
+        for var record in feedbackHistory.all() {
+            do {
                 let status = try await github.fetchIssueStatus(
                     repository: record.repository,
                     number: record.number
                 )
                 record.apply(status)
                 feedbackHistory.upsert(record)
+            } catch {
+                refreshErrors.append("\(record.id): \(error)")
             }
-            feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
-            feedbackRecords = feedbackHistory.all()
-            lastError = nil
-        } catch {
-            feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
-            feedbackRecords = feedbackHistory.all()
-            lastError = "\(error)"
         }
+        feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
+        feedbackRecords = feedbackHistory.all()
+        lastError = refreshErrors.isEmpty ? nil : refreshErrors.joined(separator: "\n")
     }
 
     public func openInBrowser(_ item: PRItem) {
