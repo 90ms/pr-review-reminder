@@ -367,6 +367,9 @@ final class AppStateTests: XCTestCase {
         let history = HistoryStore(persistence: AppStateMemoryHistoryPersistence())
         let (state, _) = await makeState(history: history) { command in
             if command.arguments.first == "search" {
+                if command.arguments.contains("--author=@me") {
+                    return CommandResult(exitCode: 0, stdout: "[]", stderr: "")
+                }
                 return CommandResult(exitCode: 0, stdout: Self.searchJSON(), stderr: "")
             }
             if command.arguments.contains("--jq") {

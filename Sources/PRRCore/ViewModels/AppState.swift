@@ -419,7 +419,11 @@ public final class AppState: ObservableObject {
             // Fetch only — do NOT auto-analyze. Preserve any existing analysis for PRs
             // that are still open so a manual review isn't discarded on refresh.
             let previous = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-            items = prs.map { pr in previous[pr.id] ?? PRItem(pr: pr) }
+            items = prs.map { pr in
+                guard var item = previous[pr.id] else { return PRItem(pr: pr) }
+                item.pr = pr
+                return item
+            }
             lastRefreshDiagnostic = RefreshDiagnostic(
                 date: Date(),
                 outcome: .success,
