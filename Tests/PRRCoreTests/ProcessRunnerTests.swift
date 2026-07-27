@@ -88,7 +88,11 @@ final class ProcessRunnerTests: XCTestCase {
         ))
 
         let lines = result.stdout.split(separator: "\n", omittingEmptySubsequences: false)
-        XCTAssertEqual(lines.first.map(String.init), directory.path)
+        let reportedDirectory = try XCTUnwrap(lines.first.map(String.init))
+        XCTAssertEqual(
+            URL(fileURLWithPath: reportedDirectory).resolvingSymlinksInPath().path,
+            directory.resolvingSymlinksInPath().path
+        )
         XCTAssertTrue(result.stdout.contains("\nvisible\n"))
         XCTAssertTrue(result.stdout.hasSuffix("unset"))
     }
