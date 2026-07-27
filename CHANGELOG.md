@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New GitHub issues are announced once in the existing Slack issue channel with
+  their labels, title, author, and a short description excerpt.
+- A repository-local `$validate-github-prs` skill reviews individual and combined
+  PR changes for merge and release readiness without changing GitHub state.
+
 ## [0.4.0] - 2026-07-27
 
 ### Added

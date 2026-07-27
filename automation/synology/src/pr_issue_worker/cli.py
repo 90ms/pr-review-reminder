@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
                 worker=worker,
                 ci_timeout_seconds=config.ci_timeout_seconds,
             )
-            print(f"sent {count} approval message(s)")
+            print(f"sent {count} Slack issue message(s)")
             return 0
         if arguments.command == "scan":
             issues = github.list_issues(config.ready_label)

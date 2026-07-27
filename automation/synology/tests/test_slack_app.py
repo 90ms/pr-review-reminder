@@ -38,7 +38,9 @@ class _GitHubStub:
         self.removed_labels: list[str] = []
         self.check_result = CheckResult(True, "All checks passed")
 
-    def list_issues(self, label: str):
+    def list_issues(self, label: str | None = None):
+        if label is not None and label not in self.issue.labels:
+            return []
         return [self.issue]
 
     def get_issue(self, issue_number: int):
@@ -148,6 +150,50 @@ class SlackAutomationTests(unittest.TestCase):
         self.assertEqual(len(self.client.posts), 1)
         self.assertIn("codex-notified", self.github.added_labels)
         self.assertEqual(self.state.get(8).message_ts, "123.456")
+        blocks = self.client.posts[0]["blocks"]
+        self.assertIn("codex-ready", blocks[0]["text"]["text"])
+        self.assertIn("설명 없음", blocks[1]["text"]["text"])
+
+    def test_scan_announces_new_unlabeled_issue_with_summary(self) -> None:
+        self.issue = Issue(
+            9,
+            "Report a notification bug",
+            "Notifications are duplicated after waking the Mac.\n\n"
+            "This paragraph contains more context.",
+            "https://github.com/90ms/pr-review-reminder/issues/9",
+            "reporter",
+            frozenset({"bug", "triage"}),
+            datetime.now(UTC).isoformat(),
+        )
+        self.github.issue = self.issue
+
+        self.assertEqual(self.automation.scan_once(), 1)
+        self.assertEqual(self.automation.scan_once(), 0)
+
+        self.assertEqual(len(self.client.posts), 1)
+        self.assertEqual(self.github.added_labels, [])
+        blocks = self.client.posts[0]["blocks"]
+        self.assertIn("Report a notification bug", blocks[0]["text"]["text"])
+        self.assertIn("bug · triage", blocks[0]["text"]["text"])
+        self.assertIn(
+            "Notifications are duplicated",
+            blocks[1]["text"]["text"],
+        )
+
+    def test_scan_does_not_backfill_issue_created_before_feature_start(self) -> None:
+        self.issue = Issue(
+            10,
+            "Existing issue",
+            "This was already open before the worker was upgraded.",
+            "https://github.com/90ms/pr-review-reminder/issues/10",
+            "reporter",
+            frozenset(),
+            "2020-01-01T00:00:00Z",
+        )
+        self.github.issue = self.issue
+
+        self.assertEqual(self.automation.scan_once(), 0)
+        self.assertEqual(self.client.posts, [])
 
     def test_unauthorized_action_is_acknowledged_and_rejected(self) -> None:
         acknowledgements: list[bool] = []
@@ -303,7 +349,12 @@ class SlackAutomationTests(unittest.TestCase):
         self.automation._update_progress_message(self.issue, state, force=True)
 
         blocks = self.client.updates[-1]["blocks"]
-        status = blocks[1]["text"]["text"]
+        status = next(
+            block["text"]["text"]
+            for block in blocks
+            if block["type"] == "section"
+            and block["text"]["text"].startswith("*상태*")
+        )
         actions = [block for block in blocks if block["type"] == "actions"]
         self.assertIn("Codex 구현 중", status)
         self.assertIn("Runner 정상", status)

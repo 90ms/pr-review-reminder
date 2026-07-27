@@ -68,14 +68,20 @@ AI가 만든 내용은 초안입니다. 코드와 라인 위치를 검증하고 
 
 ### 유지보수자용 이슈 자동화
 
-앱 제품과 분리된 선택적 Synology 워커는 `codex-ready` 이슈를 Slack에 알리고,
-허용된 사용자가 버튼으로 승인한 경우에만 NAS의 Codex CLI로 작업해 Draft PR을
-만든다. 자동 병합이나 GitHub review는 수행하지 않으며, 공개 이슈 입력과 로컬 Codex
-인증을 함께 사용하는 위험 때문에 격리·보호 경로·dry-run을 기본 운영 경계로 둔다.
+앱 제품과 분리된 선택적 Synology 워커는 새 GitHub 이슈의 라벨·제목·설명 요약을
+Slack에 한 번 알린다. `codex-ready` 이슈는 허용된 사용자가 버튼으로 승인한 경우에만
+NAS의 Codex CLI로 작업해 Draft PR을 만든다. 자동 병합이나 GitHub review는 수행하지
+않으며, 공개 이슈 입력과 로컬 Codex 인증을 함께 사용하는 위험 때문에
+격리·보호 경로·dry-run을 기본 운영 경계로 둔다.
+
+생성된 Draft PR들은 저장소의 `$validate-github-prs` 스킬로 함께 검증할 수 있다.
+스킬은 정확한 PR SHA를 임시 worktree에서 순서별로 합치고 개별·통합 테스트와 릴리스
+준비 상태를 보고하지만 GitHub 상태를 변경하거나 approval·merge를 게시하지 않는다.
 
 ### 더 알아보기
 
 - [제품 명세와 아키텍처](SPEC.md)
 - [Synology 이슈 자동화 설정](SYNOLOGY_AUTOMATION.md)
+- [PR 통합 검증 스킬](../.agents/skills/validate-github-prs/SKILL.md)
 - [개선 로드맵](../tasks/plan.md)
 - [빌드·실행과 설정](../README.md)

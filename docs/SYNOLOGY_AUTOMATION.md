@@ -1,9 +1,9 @@
 # Synology Issue Automation Setup
 
-이 기능은 `codex-ready`가 붙은 GitHub 이슈를 Slack에서 한 번 더 승인한 뒤, Synology
-NAS의 Codex CLI로 구현하고 Draft PR을 만드는 선택적 운영 도구다. PR 병합, review,
-approval과 릴리스는 자동화하지 않는다. 설계와 상태 전이는
-[ISSUE_AUTOMATION.md](ISSUE_AUTOMATION.md)를 참고한다.
+이 기능은 새 GitHub 이슈를 기존 Slack 채널에 라벨·제목·설명 요약으로 알린다.
+`codex-ready`가 붙은 이슈는 Slack에서 한 번 더 승인한 뒤 Synology NAS의 Codex
+CLI로 구현하고 Draft PR을 만든다. PR 병합, review, approval과 릴리스는 자동화하지
+않는다. 설계와 상태 전이는 [ISSUE_AUTOMATION.md](ISSUE_AUTOMATION.md)를 참고한다.
 
 ## 요구 사항
 
@@ -224,7 +224,11 @@ docker compose up -d --force-recreate
 
 ## 7. 수동 또는 예약 스캔
 
-기본 설정은 실행 중인 Socket Mode 서비스가 5분마다 스캔한다.
+기본 설정은 실행 중인 Socket Mode 서비스가 5분마다 스캔한다. 새로 생성된
+GitHub 이슈는 기존 `SLACK_CHANNEL_ID` 채널에 제목 링크, 작성자, 라벨과 설명
+앞부분 요약으로 한 번만 전송된다. 처음 이 기능이 적용될 때 이미 열려 있던 이슈는
+한꺼번에 소급 전송하지 않는다. 새 이슈에 `codex-ready`가 이미 붙어 있으면 일반
+알림과 승인 알림을 따로 보내지 않고 하나의 승인 메시지로 합친다.
 
 ```dotenv
 ENABLE_INTERNAL_SCANNER=true
@@ -251,8 +255,9 @@ docker compose exec -T issue-worker pr-issue-worker notify
 ```
 
 버튼 상호작용을 받으려면 `issue-worker`가, 승인된 구현을 소비하려면
-`codex-runner`와 `codex-egress`가 항상 실행 중이어야 한다. SQLite와
-`codex-notified` 라벨이 수동·예약 스캔의 중복 메시지를 막는다.
+`codex-runner`와 `codex-egress`가 항상 실행 중이어야 한다. SQLite가 일반 이슈
+알림을, SQLite와 `codex-notified` 라벨이 승인 알림을 기록해 수동·예약 스캔의
+중복 메시지를 막는다.
 
 ## 기존 설치 전환
 
