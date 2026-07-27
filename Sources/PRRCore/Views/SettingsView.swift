@@ -6,6 +6,7 @@ public struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var reposText = ""
     @State private var showingImporter = false
+    @State private var showingSkillFileImporter = false
 
     public init() {}
 
@@ -14,6 +15,13 @@ public struct SettingsView: View {
         case .system: return app.l("lang_system")
         case .korean: return app.l("lang_korean")
         case .english: return app.l("lang_english")
+        }
+    }
+
+    private func promptModeLabel(_ mode: PromptCompositionMode) -> String {
+        switch mode {
+        case .unified: return app.l("prompt_mode_unified")
+        case .baseWithSkillFiles: return app.l("prompt_mode_base_files")
         }
     }
 
@@ -53,6 +61,17 @@ public struct SettingsView: View {
                 if let text = try? String(contentsOf: url, encoding: .utf8) {
                     app.settings.reviewSkill = text
                 }
+            }
+        }
+        .fileImporter(
+            isPresented: $showingSkillFileImporter,
+            allowedContentTypes: [.plainText, .text, UTType(filenameExtension: "md") ?? .plainText],
+            allowsMultipleSelection: true
+        ) { result in
+            if case .success(let urls) = result {
+                let existing = Set(app.settings.reviewSkillFilePaths)
+                let additions = urls.map(\.path).filter { !existing.contains($0) }
+                app.settings.reviewSkillFilePaths.append(contentsOf: additions)
             }
         }
     }
@@ -106,6 +125,11 @@ public struct SettingsView: View {
         }
 
         Section(app.l("sec_prompt")) {
+            Picker(app.l("prompt_mode"), selection: $app.settings.promptCompositionMode) {
+                ForEach(PromptCompositionMode.allCases) { mode in
+                    Text(promptModeLabel(mode)).tag(mode)
+                }
+            }.pickerStyle(.segmented)
             TextEditor(text: $app.settings.promptTemplate)
                 .font(.caption.monospaced()).frame(minHeight: 120)
             Text(app.l("prompt_help")).font(.caption2).foregroundStyle(.secondary)
@@ -119,6 +143,28 @@ public struct SettingsView: View {
                 Button(app.l("load_file")) { showingImporter = true }
                 if !app.settings.reviewSkill.isEmpty {
                     Button(app.l("clear")) { app.settings.reviewSkill = "" }
+                }
+            }
+            if app.settings.promptCompositionMode == .baseWithSkillFiles {
+                Divider()
+                Button(app.l("add_skill_files")) { showingSkillFileImporter = true }
+                if app.settings.reviewSkillFilePaths.isEmpty {
+                    Text(app.l("skill_files_empty")).font(.caption2).foregroundStyle(.secondary)
+                } else {
+                    ForEach(app.settings.reviewSkillFilePaths, id: \.self) { path in
+                        HStack {
+                            Text((path as NSString).lastPathComponent)
+                                .lineLimit(1)
+                            Spacer()
+                            Button(app.l("delete")) {
+                                app.settings.reviewSkillFilePaths.removeAll { $0 == path }
+                            }
+                        }
+                        Text(path)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
         }

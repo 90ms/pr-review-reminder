@@ -67,6 +67,40 @@ final class AIServiceTests: XCTestCase {
         XCTAssertTrue(prompt.contains("[diff truncated]"))
     }
 
+    func testBuildPromptUsesChildSkillPromptsInBaseFileMode() {
+        let prompt = AIService.buildPrompt(
+            template: "Base\n{{SKILL}}\nD:{{DIFF}}",
+            title: "title",
+            body: "body",
+            diff: "diff",
+            skill: "Base guideline",
+            skillPrompts: ["Security checks", "Accessibility checks"],
+            compositionMode: .baseWithSkillFiles,
+            maxDiffChars: 1000
+        )
+
+        XCTAssertTrue(prompt.contains("Base guideline"))
+        XCTAssertTrue(prompt.contains("Security checks"))
+        XCTAssertTrue(prompt.contains("Accessibility checks"))
+        XCTAssertTrue(prompt.contains("---"))
+    }
+
+    func testBuildPromptIgnoresChildSkillPromptsInUnifiedMode() {
+        let prompt = AIService.buildPrompt(
+            template: "{{SKILL}}",
+            title: "title",
+            body: "body",
+            diff: "diff",
+            skill: "Inline guideline",
+            skillPrompts: ["External file guideline"],
+            compositionMode: .unified,
+            maxDiffChars: 1000
+        )
+
+        XCTAssertTrue(prompt.contains("Inline guideline"))
+        XCTAssertFalse(prompt.contains("External file guideline"))
+    }
+
     // Usage: parse claude JSON wrapper for text + tokens + cost.
     func testParseClaudeJSONUsage() {
         let raw = """

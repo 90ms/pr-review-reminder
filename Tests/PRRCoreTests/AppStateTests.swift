@@ -500,6 +500,46 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(runner.commands.contains { $0.arguments.prefix(2) == ["pr", "comment"] })
     }
 
+    func testInlinePublishUsesEditedCommentList() async throws {
+        let (state, runner) = await makeState { command in
+            if command.arguments.contains("--jq") {
+                return CommandResult(exitCode: 0, stdout: "reviewed-sha\n", stderr: "")
+            }
+            if command.arguments.prefix(2) == ["api", "repos/acme/widgets/pulls/42/reviews"] {
+                return CommandResult(exitCode: 0, stdout: "{}", stderr: "")
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+        var item = PRItem(pr: PullRequest(
+            repository: "acme/widgets",
+            number: 42,
+            title: "Edit comments",
+            author: "author",
+            url: "https://example.test/pull/42"
+        ))
+        item.details = PRDetails(
+            body: "",
+            headSha: "reviewed-sha",
+            additions: 1,
+            deletions: 0,
+            diff: "diff"
+        )
+        let comments = [
+            InlineComment(path: "a.swift", line: 10, body: "edited body")
+        ]
+
+        await state.postInlineComments(for: item, comments: comments)
+
+        let reviewCommand = runner.commands.last {
+            $0.arguments.prefix(2) == ["api", "repos/acme/widgets/pulls/42/reviews"]
+        }
+        let payload = try XCTUnwrap(reviewCommand?.stdin?.data(using: .utf8))
+        let decoded = try JSONSerialization.jsonObject(with: payload) as? [String: Any]
+        let postedComments = decoded?["comments"] as? [[String: Any]]
+        XCTAssertEqual(postedComments?.count, 1)
+        XCTAssertEqual(postedComments?.first?["body"] as? String, "edited body")
+    }
+
     func testFeedbackSubmissionIsTracked() async {
         let feedbackHistory = FeedbackHistoryStore(
             store: AppStateMemoryKeyValueStore(),

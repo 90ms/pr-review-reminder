@@ -7,6 +7,7 @@ public struct PRDetailView: View {
     @State private var busy = false
     @State private var loadedFor: String?
     @State private var pending: PendingAction?
+    @State private var previewInlineComments: [InlineComment] = []
     @State private var approveBody = ""
     @State private var layout: DetailLayout = .review
     @State private var diffTarget: DiffNavigationTarget?
@@ -208,18 +209,27 @@ public struct PRDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(editableComments.indices, id: \.self) { i in
                 VStack(alignment: .leading, spacing: 3) {
-                    Button {
-                        diffTarget = DiffNavigationTarget(
-                            path: editableComments[i].path,
-                            line: editableComments[i].line,
-                            side: editableComments[i].side
-                        )
-                        layout = .changes
-                    } label: {
-                        Text("\(editableComments[i].path):\(editableComments[i].line) · \(editableComments[i].side)")
-                            .font(.caption.monospaced())
+                    HStack {
+                        Button {
+                            diffTarget = DiffNavigationTarget(
+                                path: editableComments[i].path,
+                                line: editableComments[i].line,
+                                side: editableComments[i].side
+                            )
+                            layout = .changes
+                        } label: {
+                            Text("\(editableComments[i].path):\(editableComments[i].line) · \(editableComments[i].side)")
+                                .font(.caption.monospaced())
+                        }
+                        .buttonStyle(.link)
+                        Spacer()
+                        Button(role: .destructive) {
+                            editableComments.remove(at: i)
+                        } label: {
+                            Label(app.l("remove_inline_comment"), systemImage: "trash")
+                        }
+                        .labelStyle(.iconOnly)
                     }
-                    .buttonStyle(.link)
                     TextEditor(text: Binding(
                         get: { editableComments[i].body },
                         set: { editableComments[i].body = $0 }
@@ -236,6 +246,7 @@ public struct PRDetailView: View {
         HStack(spacing: 10) {
             if !editableComments.isEmpty {
                 Button {
+                    previewInlineComments = editableComments
                     pending = .inline(editableComments)
                 } label: { Label(app.l("post_comments"), systemImage: "text.bubble") }
                     .buttonStyle(.borderedProminent)
@@ -261,14 +272,36 @@ public struct PRDetailView: View {
             Divider()
 
             switch action {
-            case .inline(let comments):
+            case .inline:
                 Text(app.l("preview_inline")).font(.headline)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(comments) { c in
+                        if previewInlineComments.isEmpty {
+                            Text(app.l("no_inline_comments_to_post"))
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(previewInlineComments.indices, id: \.self) { i in
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(c.path):\(c.line) · \(c.side)").font(.caption.monospaced()).foregroundStyle(.secondary)
-                                Text(c.body).font(.callout).textSelection(.enabled)
+                                HStack {
+                                    Text("\(previewInlineComments[i].path):\(previewInlineComments[i].line) · \(previewInlineComments[i].side)")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button(role: .destructive) {
+                                        previewInlineComments.remove(at: i)
+                                    } label: {
+                                        Label(app.l("remove_inline_comment"), systemImage: "trash")
+                                    }
+                                    .labelStyle(.iconOnly)
+                                }
+                                TextEditor(text: Binding(
+                                    get: { previewInlineComments[i].body },
+                                    set: { previewInlineComments[i].body = $0 }
+                                ))
+                                .font(.callout)
+                                .frame(minHeight: 64)
+                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(.quaternary))
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
@@ -294,23 +327,28 @@ public struct PRDetailView: View {
             HStack {
                 Button(app.l("cancel")) { pending = nil }
                 Spacer()
-                if case .inline(let comments) = action {
+                if case .inline = action {
                     Button {
                         Task {
                             busy = true
+                            let commentsToPost = cleanedInlineComments(previewInlineComments)
                             await app.postInlineCommentsAndApprove(
-                                for: item, comments: comments, approveBody: app.l("approve_after_comments_body"))
+                                for: item, comments: commentsToPost, approveBody: app.l("approve_after_comments_body"))
+                            editableComments = commentsToPost
                             busy = false
                             pending = nil
                         }
                     } label: { Label(app.l("post_and_approve"), systemImage: "checkmark.seal") }
-                        .disabled(busy)
+                        .disabled(busy || cleanedInlineComments(previewInlineComments).isEmpty)
                 }
                 Button {
                     Task {
                         busy = true
                         switch action {
-                        case .inline(let comments): await app.postInlineComments(for: item, comments: comments)
+                        case .inline:
+                            let commentsToPost = cleanedInlineComments(previewInlineComments)
+                            await app.postInlineComments(for: item, comments: commentsToPost)
+                            editableComments = commentsToPost
                         case .summary(let text): await app.postSummaryComment(for: item, override: text)
                         case .approve: await app.approve(item, body: approveBody.isEmpty ? nil : approveBody)
                         }
@@ -319,11 +357,26 @@ public struct PRDetailView: View {
                     }
                 } label: { Label(busy ? app.l("posting") : app.l("submit"), systemImage: "paperplane") }
                     .buttonStyle(.borderedProminent)
-                    .disabled(busy)
+                    .disabled(busy || inlineSubmitDisabled(action))
             }
         }
         .padding(16)
         .frame(width: 520, height: 460)
+    }
+
+    private func cleanedInlineComments(_ comments: [InlineComment]) -> [InlineComment] {
+        comments.compactMap { comment in
+            let body = comment.body.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !body.isEmpty else { return nil }
+            return InlineComment(path: comment.path, line: comment.line, side: comment.side, body: body)
+        }
+    }
+
+    private func inlineSubmitDisabled(_ action: PendingAction) -> Bool {
+        if case .inline = action {
+            return cleanedInlineComments(previewInlineComments).isEmpty
+        }
+        return false
     }
 
     private func diffPane(_ item: PRItem) -> some View {
