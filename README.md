@@ -196,13 +196,15 @@ OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.4.0 BUILD_NUMBER=40 \
 ## 선택적 이슈 구현 자동화
 
 유지보수자는 앱과 별도로 Synology NAS에서 승인 기반 이슈 워커를 운영할 수 있습니다.
-`codex-ready` 이슈를 Slack에 알리고, 허용된 사용자가 **구현 시작**을 누른 경우에만
-NAS의 격리 Runner가 최신 `main`에서 구현·테스트·문서 갱신을 수행하고, 별도
-Controller가 결과를 검증해 Draft PR을 생성합니다.
+새 GitHub 이슈를 기존 Slack 채널에 라벨·제목·설명 요약과 함께 알립니다.
+`codex-ready` 이슈에서는 허용된 사용자가 **구현 시작**을 누른 경우에만 NAS의
+격리 Runner가 최신 `main`에서 구현·테스트·문서 갱신을 수행하고, 별도 Controller가
+결과를 검증해 Draft PR을 생성합니다.
 
 ```text
-codex-ready issue → Slack 승인 → Controller queue → 격리 Codex Runner
-                    → Controller 검증·Draft PR → macOS CI 알림
+new issue → Slack 요약
+codex-ready issue → Slack 요약·승인 → Controller queue → 격리 Codex Runner
+                         → Controller 검증·Draft PR → macOS CI 알림
 ```
 
 자동 병합·review·approval·릴리스는 수행하지 않습니다. 실제 토큰과 CLI 인증은 NAS에만
@@ -214,6 +216,11 @@ Slack 원본 메시지는 준비·Codex 실행·검증·push·PR·CI 단계와 R
 [운영 계약](docs/ISSUE_AUTOMATION.md)과
 [Synology 설정 가이드](docs/SYNOLOGY_AUTOMATION.md)의 공개 이슈 및 Codex 인증
 주의사항을 확인하세요.
+
+여러 Draft PR의 병합 순서, 교차 충돌, 통합 테스트와 릴리스 준비 상태는 저장소의
+`$validate-github-prs` 스킬로 읽기 전용 검증할 수 있습니다. 이 스킬은 임시
+worktree에서 정확한 PR SHA들을 함께 합쳐 보지만 GitHub review·approval·comment,
+push 또는 merge는 게시하지 않습니다.
 
 ## 아키텍처
 
@@ -239,7 +246,7 @@ Sources/
   PRReviewReminder/  @main 앱 진입점과 --doctor
 Tests/               단위·오케스트레이션·스크립트 테스트
 Scripts/             앱 패키징, launcher, Formula renderer
-.agents/skills/      릴리스와 승인된 이슈 구현 Codex workflow
+.agents/skills/      릴리스·이슈 구현·다중 PR 검증 Codex workflow
 automation/synology/ 선택적 Slack 승인·Codex Draft PR 워커
 ```
 

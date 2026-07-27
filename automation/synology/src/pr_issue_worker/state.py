@@ -7,6 +7,8 @@ from pathlib import Path
 
 from .models import JobPhase
 
+_NEW_ISSUE_NOTIFICATIONS_STARTED_AT = "new_issue_notifications_started_at"
+
 
 @dataclass(frozen=True)
 class JobState:
@@ -70,6 +72,30 @@ class StateStore:
                     connection.execute(
                         f"ALTER TABLE issue_jobs ADD COLUMN {name} {definition}"
                     )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS issue_announcements (
+                    issue_number INTEGER PRIMARY KEY,
+                    message_ts TEXT NOT NULL,
+                    notified_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO metadata (key, value)
+                VALUES (?, ?)
+                """,
+                (_NEW_ISSUE_NOTIFICATIONS_STARTED_AT, _now()),
+            )
 
     def record_notification(self, issue_number: int, message_ts: str) -> bool:
         now = _now()
@@ -97,6 +123,46 @@ class StateStore:
 
     def needs_notification(self, issue_number: int) -> bool:
         return self.get(issue_number) is None
+
+    def needs_issue_announcement(
+        self,
+        issue_number: int,
+        created_at: str | None,
+    ) -> bool:
+        with self._connect() as connection:
+            announced = connection.execute(
+                """
+                SELECT 1 FROM issue_announcements WHERE issue_number = ?
+                """,
+                (issue_number,),
+            ).fetchone()
+            if announced is not None:
+                return False
+            if created_at is None:
+                return True
+            row = connection.execute(
+                "SELECT value FROM metadata WHERE key = ?",
+                (_NEW_ISSUE_NOTIFICATIONS_STARTED_AT,),
+            ).fetchone()
+        if row is None:
+            return True
+        return _parse_datetime(created_at) >= _parse_datetime(str(row[0]))
+
+    def record_issue_announcement(
+        self,
+        issue_number: int,
+        message_ts: str,
+    ) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO issue_announcements (
+                    issue_number, message_ts, notified_at
+                ) VALUES (?, ?, ?)
+                """,
+                (issue_number, message_ts, _now()),
+            )
+            return cursor.rowcount == 1
 
     def claim(self, issue_number: int, approved_by: str, lease_seconds: int) -> bool:
         now = datetime.now(UTC)
@@ -259,3 +325,7 @@ class StateStore:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _parse_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))

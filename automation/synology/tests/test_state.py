@@ -78,6 +78,22 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(state.phase, JobPhase.PREPARING)
         self.assertIsNotNone(state.started_at)
 
+    def test_issue_announcement_is_recorded_only_once(self) -> None:
+        created_at = datetime.now(UTC).isoformat()
+
+        self.assertTrue(self.store.needs_issue_announcement(20, created_at))
+        self.assertTrue(self.store.record_issue_announcement(20, "123.456"))
+        self.assertFalse(self.store.record_issue_announcement(20, "789.012"))
+        self.assertFalse(self.store.needs_issue_announcement(20, created_at))
+
+    def test_existing_issue_is_before_notification_start(self) -> None:
+        self.assertFalse(
+            self.store.needs_issue_announcement(
+                21,
+                "2020-01-01T00:00:00Z",
+            )
+        )
+
     def test_failed_job_can_be_claimed_again(self) -> None:
         self.assertTrue(self.store.claim(13, "U123", 300))
         self.store.finish(13, "failed", error="timeout")
