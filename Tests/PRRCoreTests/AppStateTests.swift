@@ -104,6 +104,10 @@ final class AppStateTests: XCTestCase {
             store: AppStateMemoryKeyValueStore(),
             key: "test.schedule"
         ),
+        feedbackHistory: FeedbackHistoryStore = FeedbackHistoryStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "test.feedback"
+        ),
         responder: @escaping @Sendable (Command) -> CommandResult
     ) async -> (AppState, MockProcessRunner) {
         let keyValues = AppStateMemoryKeyValueStore()
@@ -128,6 +132,7 @@ final class AppStateTests: XCTestCase {
             history: history,
             feedbackSeenStore: feedbackSeenStore,
             scheduleRunStore: scheduleRunStore,
+            feedbackHistory: feedbackHistory,
             autoBootstrap: false
         )
         await state.diagnose()
@@ -493,6 +498,110 @@ final class AppStateTests: XCTestCase {
 
         XCTAssertTrue(state.lastError?.contains("changed") == true)
         XCTAssertFalse(runner.commands.contains { $0.arguments.prefix(2) == ["pr", "comment"] })
+    }
+
+    func testFeedbackSubmissionIsTracked() async {
+        let feedbackHistory = FeedbackHistoryStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "feedback.submit"
+        )
+        let (state, _) = await makeState(feedbackHistory: feedbackHistory) { command in
+            if command.arguments.prefix(2) == ["issue", "create"] {
+                return CommandResult(
+                    exitCode: 0,
+                    stdout: "https://github.com/90ms/pr-review-reminder/issues/123\n",
+                    stderr: ""
+                )
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        let result = await state.submitFeedback(title: "Bug", body: "It broke")
+
+        guard case .created = result else {
+            return XCTFail("expected created result")
+        }
+        XCTAssertEqual(state.feedbackRecords.map(\.number), [123])
+        XCTAssertEqual(feedbackHistory.all().first?.title, "Bug")
+    }
+
+    func testFeedbackHistoryRefreshUpdatesIssueStatus() async {
+        let feedbackHistory = FeedbackHistoryStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "feedback.refresh"
+        )
+        feedbackHistory.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 123,
+            title: "Bug",
+            body: "It broke",
+            url: "https://github.com/90ms/pr-review-reminder/issues/123"
+        ))
+        let (state, _) = await makeState(feedbackHistory: feedbackHistory) { command in
+            if command.arguments.prefix(2) == ["issue", "view"] {
+                return CommandResult(
+                    exitCode: 0,
+                    stdout: #"{"title":"Fixed","state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/90ms/pr-review-reminder/issues/123","updatedAt":"2026-07-26T10:00:00Z","closedAt":"2026-07-26T10:30:00Z"}"#,
+                    stderr: ""
+                )
+            }
+            return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+        }
+
+        await state.refreshFeedbackHistory()
+
+        XCTAssertEqual(state.feedbackRecords.first?.title, "Fixed")
+        XCTAssertEqual(state.feedbackRecords.first?.state, .closed)
+        XCTAssertEqual(state.feedbackRecords.first?.stateReason, "COMPLETED")
+        XCTAssertNotNil(state.feedbackRecords.first?.lastCheckedAt)
+    }
+
+    func testFeedbackHistoryRefreshContinuesAfterIndividualFailure() async {
+        let feedbackHistory = FeedbackHistoryStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "feedback.partial-refresh"
+        )
+        feedbackHistory.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 1,
+            title: "Refresh succeeds",
+            body: "Body",
+            url: "https://github.com/90ms/pr-review-reminder/issues/1",
+            createdAt: Date(timeIntervalSince1970: 100)
+        ))
+        feedbackHistory.upsert(FeedbackRecord(
+            repository: "90ms/pr-review-reminder",
+            number: 2,
+            title: "Refresh fails",
+            body: "Body",
+            url: "https://github.com/90ms/pr-review-reminder/issues/2",
+            createdAt: Date(timeIntervalSince1970: 200)
+        ))
+        let (state, _) = await makeState(feedbackHistory: feedbackHistory) { command in
+            guard command.arguments.prefix(2) == ["issue", "view"] else {
+                return CommandResult(exitCode: 1, stdout: "", stderr: "unexpected")
+            }
+            if command.arguments.contains("2") {
+                return CommandResult(exitCode: 1, stdout: "", stderr: "not found")
+            }
+            return CommandResult(
+                exitCode: 0,
+                stdout: #"{"title":"Refreshed","state":"CLOSED","stateReason":"COMPLETED","url":"https://github.com/90ms/pr-review-reminder/issues/1","updatedAt":"2026-07-26T10:00:00Z","closedAt":"2026-07-26T10:30:00Z"}"#,
+                stderr: ""
+            )
+        }
+
+        await state.refreshFeedbackHistory()
+
+        XCTAssertEqual(
+            state.feedbackRecords.first(where: { $0.number == 1 })?.state,
+            .closed
+        )
+        XCTAssertEqual(
+            state.feedbackRecords.first(where: { $0.number == 2 })?.state,
+            .open
+        )
+        XCTAssertTrue(state.lastError?.contains("not found") == true)
     }
 
     func testUserCancellationTransitionsReviewState() async {

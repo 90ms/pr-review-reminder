@@ -553,6 +553,12 @@ public final class GitHubService: Sendable {
         return result
     }
 
+    public func fetchIssueStatus(repository: String, number: Int) async throws -> FeedbackIssueStatus {
+        let result = try await runner.run(FeedbackService.viewIssueCommand(gh: gh, repository: repository, number: number))
+        guard result.succeeded else { throw GitHubError("view issue failed: \(result.stderr)") }
+        return try FeedbackService.parseIssueStatus(result.stdout)
+    }
+
     @discardableResult
     public func approve(_ pr: PullRequest, body: String?) async throws -> CommandResult {
         let result = try await runner.run(Self.approveCommand(gh: gh, repository: pr.repository, number: pr.number, body: body))
