@@ -69,6 +69,15 @@ final class ProcessRunnerTests: XCTestCase {
         XCTAssertNil(command.environment)
     }
 
+    func testCommandInheritsParentEnvironmentByDefault() async throws {
+        let expectedHome = try XCTUnwrap(ProcessInfo.processInfo.environment["HOME"])
+        let runner = SystemProcessRunner()
+        let result = try await runner.run("/bin/sh", ["-c", "printf %s \"$HOME\""])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stdout, expectedHome)
+    }
+
     func testCommandAppliesWorkingDirectoryAndRestrictedEnvironment() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("PRR-ProcessRunnerTests-\(UUID().uuidString)")

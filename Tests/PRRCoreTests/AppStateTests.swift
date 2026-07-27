@@ -65,10 +65,14 @@ private final class CancellableAppStateRunner: ProcessRunning, @unchecked Sendab
         if command.executable == "/bin/zsh", command.arguments.first == "-lc" {
             return CommandResult(exitCode: 0, stdout: "/usr/bin/true\n", stderr: "")
         }
-        if command.arguments == ["auth", "status"] {
+        if command.arguments == [
+            "auth", "status", "--active", "--hostname", "github.com"
+        ] {
             return CommandResult(exitCode: 0, stdout: "", stderr: "")
         }
-        if command.arguments == ["api", "user", "--jq", ".login"] {
+        if command.arguments == [
+            "api", "user", "--hostname", "github.com", "--jq", ".login"
+        ] {
             return CommandResult(exitCode: 0, stdout: "reviewer\n", stderr: "")
         }
         if command.arguments.first == "search" {
@@ -118,10 +122,14 @@ final class AppStateTests: XCTestCase {
             if command.executable == "/bin/zsh", command.arguments.first == "-lc" {
                 return CommandResult(exitCode: 0, stdout: "\(executable)\n", stderr: "")
             }
-            if command.arguments == ["auth", "status"] {
+            if command.arguments == [
+                "auth", "status", "--active", "--hostname", "github.com"
+            ] {
                 return CommandResult(exitCode: 0, stdout: "", stderr: "")
             }
-            if command.arguments == ["api", "user", "--jq", ".login"] {
+            if command.arguments == [
+                "api", "user", "--hostname", "github.com", "--jq", ".login"
+            ] {
                 return CommandResult(exitCode: 0, stdout: "reviewer\n", stderr: "")
             }
             return responder(command)
