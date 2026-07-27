@@ -188,7 +188,7 @@ open "dist/PR Review Reminder.app"
 패키징 출력과 버전은 환경 변수로 주입할 수 있습니다.
 
 ```bash
-OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.3.1 BUILD_NUMBER=31 \
+OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.4.0 BUILD_NUMBER=40 \
   ./Scripts/build-app.sh
 ```
 

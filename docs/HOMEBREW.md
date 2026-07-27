@@ -25,7 +25,7 @@ Formula는 태그 source tarball을 SHA-256으로 검증하고 Swift release bui
 ## 현재 배포 상태
 
 공개 [`90ms/homebrew-tap`](https://github.com/90ms/homebrew-tap)의 Formula는
-`v0.3.1`을 제공한다. tap CI에서 source install, `brew test`,
+`v0.4.0`을 제공한다. tap CI에서 source install, `brew test`,
 `brew audit --strict`를 통과했다.
 
 ## 관리자의 Formula 갱신
@@ -33,7 +33,7 @@ Formula는 태그 source tarball을 SHA-256으로 검증하고 Swift release bui
 새 릴리스 태그와 source tarball SHA를 준비한 뒤 Formula를 렌더링한다.
 
 ```bash
-version=0.3.1
+version=0.4.0
 curl -L \
   "https://github.com/90ms/pr-review-reminder/archive/refs/tags/v${version}.tar.gz" \
   -o "/tmp/pr-review-reminder-${version}.tar.gz"
