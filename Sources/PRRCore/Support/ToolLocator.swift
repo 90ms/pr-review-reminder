@@ -19,7 +19,11 @@ public actor ToolLocator {
 
     /// Builds the command that asks a login shell where a tool lives.
     public static func locateCommand(shell: String, tool: String) -> Command {
-        Command(executable: shell, arguments: ["-lc", "command -v \(tool)"])
+        Command(
+            executable: shell,
+            arguments: ["-lc", "command -v \(tool)"],
+            timeout: 10
+        )
     }
 
     /// Ordered, well-known absolute locations to probe when the login shell fails.

@@ -6,6 +6,7 @@ final class ToolLocatorTests: XCTestCase {
         let cmd = ToolLocator.locateCommand(shell: "/bin/zsh", tool: "claude")
         XCTAssertEqual(cmd.executable, "/bin/zsh")
         XCTAssertEqual(cmd.arguments, ["-lc", "command -v claude"])
+        XCTAssertEqual(cmd.timeout, 10)
     }
 
     // The fallback list must include ~/.local/bin, where the claude CLI installs

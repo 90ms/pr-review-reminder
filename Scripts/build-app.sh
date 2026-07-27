@@ -19,7 +19,7 @@ if [[ -z "$DIST_DIR" || "$DIST_DIR" == "/" || "$DIST_DIR" == "$ROOT" ]]; then
     exit 2
 fi
 APP_DIR="$DIST_DIR/$APP_NAME.app"
-APP_VERSION="${APP_VERSION:-0.2.2}"
+APP_VERSION="${APP_VERSION:-0.0.0-dev}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 
 echo "==> Building release binary"

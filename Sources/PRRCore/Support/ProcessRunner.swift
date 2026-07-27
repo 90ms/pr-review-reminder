@@ -23,12 +23,23 @@ public struct Command: Sendable, Equatable {
     public let arguments: [String]
     public let stdin: String?
     public let timeout: TimeInterval?
+    public let workingDirectory: String?
+    public let environment: [String: String]?
 
-    public init(executable: String, arguments: [String], stdin: String? = nil, timeout: TimeInterval? = nil) {
+    public init(
+        executable: String,
+        arguments: [String],
+        stdin: String? = nil,
+        timeout: TimeInterval? = nil,
+        workingDirectory: String? = nil,
+        environment: [String: String]? = nil
+    ) {
         self.executable = executable
         self.arguments = arguments
         self.stdin = stdin
         self.timeout = timeout
+        self.workingDirectory = workingDirectory
+        self.environment = environment
     }
 }
 
@@ -70,6 +81,10 @@ public final class SystemProcessRunner: ProcessRunning {
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: command.executable)
                     process.arguments = command.arguments
+                    process.currentDirectoryURL = command.workingDirectory.map {
+                        URL(fileURLWithPath: $0, isDirectory: true)
+                    }
+                    process.environment = command.environment
 
                     let stdoutPipe = Pipe()
                     let stderrPipe = Pipe()

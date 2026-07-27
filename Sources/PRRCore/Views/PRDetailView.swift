@@ -3,14 +3,24 @@ import SwiftUI
 /// Large, resizable review view shown in a dedicated window.
 public struct PRDetailView: View {
     @EnvironmentObject var app: AppState
-    @State private var editableComments: [InlineComment] = []
+    @State private var editableComments: [EditableComment] = []
     @State private var busy = false
     @State private var loadedFor: String?
     @State private var pending: PendingAction?
-    @State private var previewInlineComments: [InlineComment] = []
+    @State private var previewInlineComments: [EditableComment] = []
     @State private var approveBody = ""
     @State private var layout: DetailLayout = .review
     @State private var diffTarget: DiffNavigationTarget?
+
+    private struct EditableComment: Identifiable {
+        let id: UUID
+        var comment: InlineComment
+
+        init(id: UUID = UUID(), comment: InlineComment) {
+            self.id = id
+            self.comment = comment
+        }
+    }
 
     private enum DetailLayout: String, CaseIterable, Identifiable {
         case review
@@ -95,7 +105,7 @@ public struct PRDetailView: View {
 
     private func syncComments(_ item: PRItem) {
         if loadedFor != item.id {
-            editableComments = item.analysis?.inlineComments ?? []
+            editableComments = makeEditableComments(item.analysis?.inlineComments ?? [])
             loadedFor = item.id
         }
     }
@@ -207,33 +217,30 @@ public struct PRDetailView: View {
 
     private var inlineEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(editableComments.indices, id: \.self) { i in
+            ForEach(editableComments) { entry in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Button {
                             diffTarget = DiffNavigationTarget(
-                                path: editableComments[i].path,
-                                line: editableComments[i].line,
-                                side: editableComments[i].side
+                                path: entry.comment.path,
+                                line: entry.comment.line,
+                                side: entry.comment.side
                             )
                             layout = .changes
                         } label: {
-                            Text("\(editableComments[i].path):\(editableComments[i].line) · \(editableComments[i].side)")
+                            Text("\(entry.comment.path):\(entry.comment.line) · \(entry.comment.side)")
                                 .font(.caption.monospaced())
                         }
                         .buttonStyle(.link)
                         Spacer()
                         Button(role: .destructive) {
-                            editableComments.remove(at: i)
+                            editableComments.removeAll { $0.id == entry.id }
                         } label: {
                             Label(app.l("remove_inline_comment"), systemImage: "trash")
                         }
                         .labelStyle(.iconOnly)
                     }
-                    TextEditor(text: Binding(
-                        get: { editableComments[i].body },
-                        set: { editableComments[i].body = $0 }
-                    ))
+                    TextEditor(text: editableBodyBinding(for: entry.id))
                     .font(.callout)
                     .frame(minHeight: 60)
                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(.quaternary))
@@ -247,7 +254,7 @@ public struct PRDetailView: View {
             if !editableComments.isEmpty {
                 Button {
                     previewInlineComments = editableComments
-                    pending = .inline(editableComments)
+                    pending = .inline(editableComments.map(\.comment))
                 } label: { Label(app.l("post_comments"), systemImage: "text.bubble") }
                     .buttonStyle(.borderedProminent)
             }
@@ -281,24 +288,21 @@ public struct PRDetailView: View {
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
-                        ForEach(previewInlineComments.indices, id: \.self) { i in
+                        ForEach(previewInlineComments) { entry in
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack {
-                                    Text("\(previewInlineComments[i].path):\(previewInlineComments[i].line) · \(previewInlineComments[i].side)")
+                                    Text("\(entry.comment.path):\(entry.comment.line) · \(entry.comment.side)")
                                         .font(.caption.monospaced())
                                         .foregroundStyle(.secondary)
                                     Spacer()
                                     Button(role: .destructive) {
-                                        previewInlineComments.remove(at: i)
+                                        previewInlineComments.removeAll { $0.id == entry.id }
                                     } label: {
                                         Label(app.l("remove_inline_comment"), systemImage: "trash")
                                     }
                                     .labelStyle(.iconOnly)
                                 }
-                                TextEditor(text: Binding(
-                                    get: { previewInlineComments[i].body },
-                                    set: { previewInlineComments[i].body = $0 }
-                                ))
+                                TextEditor(text: previewBodyBinding(for: entry.id))
                                 .font(.callout)
                                 .frame(minHeight: 64)
                                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(.quaternary))
@@ -334,7 +338,7 @@ public struct PRDetailView: View {
                             let commentsToPost = cleanedInlineComments(previewInlineComments)
                             await app.postInlineCommentsAndApprove(
                                 for: item, comments: commentsToPost, approveBody: app.l("approve_after_comments_body"))
-                            editableComments = commentsToPost
+                            editableComments = makeEditableComments(commentsToPost)
                             busy = false
                             pending = nil
                         }
@@ -348,7 +352,7 @@ public struct PRDetailView: View {
                         case .inline:
                             let commentsToPost = cleanedInlineComments(previewInlineComments)
                             await app.postInlineComments(for: item, comments: commentsToPost)
-                            editableComments = commentsToPost
+                            editableComments = makeEditableComments(commentsToPost)
                         case .summary(let text): await app.postSummaryComment(for: item, override: text)
                         case .approve: await app.approve(item, body: approveBody.isEmpty ? nil : approveBody)
                         }
@@ -364,8 +368,41 @@ public struct PRDetailView: View {
         .frame(width: 520, height: 460)
     }
 
-    private func cleanedInlineComments(_ comments: [InlineComment]) -> [InlineComment] {
-        comments.compactMap { comment in
+    private func makeEditableComments(_ comments: [InlineComment]) -> [EditableComment] {
+        comments.map { EditableComment(comment: $0) }
+    }
+
+    private func editableBodyBinding(for id: UUID) -> Binding<String> {
+        Binding(
+            get: {
+                editableComments.first { $0.id == id }?.comment.body ?? ""
+            },
+            set: { value in
+                guard let index = editableComments.firstIndex(where: { $0.id == id }) else {
+                    return
+                }
+                editableComments[index].comment.body = value
+            }
+        )
+    }
+
+    private func previewBodyBinding(for id: UUID) -> Binding<String> {
+        Binding(
+            get: {
+                previewInlineComments.first { $0.id == id }?.comment.body ?? ""
+            },
+            set: { value in
+                guard let index = previewInlineComments.firstIndex(where: { $0.id == id }) else {
+                    return
+                }
+                previewInlineComments[index].comment.body = value
+            }
+        )
+    }
+
+    private func cleanedInlineComments(_ comments: [EditableComment]) -> [InlineComment] {
+        comments.compactMap { entry in
+            let comment = entry.comment
             let body = comment.body.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !body.isEmpty else { return nil }
             return InlineComment(path: comment.path, line: comment.line, side: comment.side, body: body)

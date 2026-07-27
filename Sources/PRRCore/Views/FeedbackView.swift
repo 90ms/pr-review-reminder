@@ -8,6 +8,7 @@ public struct FeedbackView: View {
     @State private var body_ = ""
     @State private var preview: String?
     @State private var createdURL: String?
+    @State private var omittedLabels: [String] = []
     @State private var busy = false
     @State private var refreshingHistory = false
     @State private var classification: FeedbackService.ClassificationLabel = .question
@@ -47,6 +48,15 @@ public struct FeedbackView: View {
             }
             if let createdURL {
                 Text(createdURL).font(.caption.monospaced()).foregroundStyle(.green).textSelection(.enabled)
+            }
+            if !omittedLabels.isEmpty {
+                Text(String(
+                    format: app.l("fb_labels_omitted"),
+                    omittedLabels.joined(separator: ", ")
+                ))
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .textSelection(.enabled)
             }
 
             Divider()
@@ -115,13 +125,19 @@ public struct FeedbackView: View {
                         busy = true
                         let result = await app.submitFeedback(title: title, body: body_, classification: classification)
                         switch result {
-                        case .held(let p): preview = p; createdURL = nil
-                        case .created(let out, _):
+                        case .held(let p):
+                            preview = p
+                            createdURL = nil
+                            omittedLabels = []
+                        case .created(let out, _, let missingLabels):
                             createdURL = out
                             preview = nil
+                            omittedLabels = missingLabels
                             title = ""
                             body_ = ""
-                            dismiss()
+                            if missingLabels.isEmpty {
+                                dismiss()
+                            }
                         case .none: break
                         }
                         busy = false

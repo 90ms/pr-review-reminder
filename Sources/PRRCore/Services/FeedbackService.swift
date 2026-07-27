@@ -38,14 +38,18 @@ public struct FeedbackService: Sendable {
         for label in labels {
             arguments.append(contentsOf: ["--label", label])
         }
-        return Command(executable: gh, arguments: arguments)
+        return Command(
+            executable: gh,
+            arguments: arguments,
+            timeout: GitHubService.writeTimeout
+        )
     }
 
     public static func viewIssueCommand(gh: String, repository: String, number: Int) -> Command {
         Command(executable: gh, arguments: [
             "issue", "view", "\(number)", "-R", repository, "--json",
             "number,title,state,stateReason,url,updatedAt,closedAt"
-        ])
+        ], timeout: GitHubService.readTimeout)
     }
 
     /// Human-readable rendering of the command (for the preview box).
@@ -113,7 +117,11 @@ public struct FeedbackService: Sendable {
         /// GitHub CLI is unavailable, so nothing was executed.
         case held(preview: String)
         /// Issue created; carries stdout (e.g. the issue URL) and local tracking metadata.
-        case created(output: String, record: FeedbackRecord?)
+        case created(
+            output: String,
+            record: FeedbackRecord?,
+            omittedLabels: [String]
+        )
     }
 
     /// Submits feedback to the project repository. Without an available GitHub
@@ -139,13 +147,14 @@ public struct FeedbackService: Sendable {
                 labels: labels
             ))
         }
-        let result = try await github.createIssue(
+        let creation = try await github.createIssue(
             repository: Self.repository,
             title: title,
             body: body,
             labels: labels
         )
-        let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let output = creation.commandResult.stdout
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return .created(
             output: output,
             record: Self.parseCreatedIssue(
@@ -153,7 +162,8 @@ public struct FeedbackService: Sendable {
                 repository: Self.repository,
                 title: title,
                 body: body
-            )
+            ),
+            omittedLabels: creation.omittedLabels
         )
     }
 

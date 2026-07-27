@@ -3,14 +3,91 @@ import XCTest
 
 final class AIServiceTests: XCTestCase {
     func testAICommandsHaveFiniteTimeouts() {
-        XCTAssertEqual(
-            AIService.claudeCommand(claude: "/claude").timeout,
-            AIService.defaultAnalysisTimeout
+        let claude = AIService.claudeCommand(claude: "/claude")
+        XCTAssertEqual(claude.timeout, AIService.defaultAnalysisTimeout)
+        XCTAssertTrue(claude.arguments.contains("--disallowedTools"))
+        XCTAssertTrue(claude.arguments.contains("--permission-mode"))
+        XCTAssertTrue(claude.arguments.contains("--max-turns"))
+
+        let codex = AIService.codexCommand(codex: "/codex")
+        XCTAssertEqual(codex.timeout, AIService.defaultAnalysisTimeout)
+        XCTAssertTrue(codex.arguments.contains("--ephemeral"))
+        XCTAssertTrue(codex.arguments.contains("--ignore-user-config"))
+        XCTAssertTrue(codex.arguments.contains("--ignore-rules"))
+        XCTAssertTrue(codex.arguments.contains("read-only"))
+    }
+
+    func testRestrictedEnvironmentDropsExportedTokens() {
+        let environment = AIService.restrictedEnvironment(from: [
+            "HOME": "/Users/test",
+            "PATH": "/usr/bin",
+            "CODEX_HOME": "/Users/test/.codex",
+            "GH_TOKEN": "github-secret",
+            "OPENAI_API_KEY": "openai-secret",
+            "ANTHROPIC_API_KEY": "anthropic-secret",
+            "UNRELATED_SECRET": "other-secret",
+        ])
+
+        XCTAssertEqual(environment["HOME"], "/Users/test")
+        XCTAssertEqual(environment["CODEX_HOME"], "/Users/test/.codex")
+        XCTAssertNil(environment["GH_TOKEN"])
+        XCTAssertNil(environment["OPENAI_API_KEY"])
+        XCTAssertNil(environment["ANTHROPIC_API_KEY"])
+        XCTAssertNil(environment["UNRELATED_SECRET"])
+    }
+
+    func testCompletePreservesTimeoutAndUsesEphemeralWorkingDirectory() async throws {
+        let runner = MockProcessRunner()
+        runner.defaultResult = CommandResult(exitCode: 0, stdout: "{}", stderr: "")
+        let service = AIService(
+            runner: runner,
+            claudePath: "/claude",
+            codexPath: "/codex"
         )
-        XCTAssertEqual(
-            AIService.codexCommand(codex: "/codex").timeout,
-            AIService.defaultAnalysisTimeout
+
+        _ = try await service.complete(prompt: "review", tool: .codex)
+
+        let command = try XCTUnwrap(runner.commands.first)
+        XCTAssertEqual(command.timeout, AIService.defaultAnalysisTimeout)
+        XCTAssertEqual(command.stdin, "review")
+        let workingDirectory = try XCTUnwrap(command.workingDirectory)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workingDirectory))
+        XCTAssertNil(command.environment?["GH_TOKEN"])
+    }
+
+    func testSkillPromptFilesFailClosedWhenAnySelectionIsUnreadable() throws {
+        XCTAssertThrowsError(
+            try AIService.loadSkillPromptFiles([
+                "/path/that/does/not/exist/review-skill.md"
+            ])
+        ) { error in
+            XCTAssertTrue("\(error)".contains("review-skill.md"))
+        }
+    }
+
+    func testAnalyzeRequiresSkillPlaceholderWhenGuidelinesAreConfigured() async {
+        let runner = MockProcessRunner()
+        let service = AIService(
+            runner: runner,
+            claudePath: "/claude",
+            codexPath: "/codex"
         )
+        var settings = AppSettings()
+        settings.promptTemplate = "Title: {{TITLE}}\nDiff: {{DIFF}}"
+        settings.reviewSkill = "Check concurrency."
+
+        do {
+            _ = try await service.analyze(
+                title: "Title",
+                body: "",
+                diff: "diff",
+                settings: settings
+            )
+            XCTFail("Expected a missing {{SKILL}} placeholder error")
+        } catch {
+            XCTAssertTrue("\(error)".contains("{{SKILL}}"))
+            XCTAssertTrue(runner.commands.isEmpty)
+        }
     }
 
     func testDiffTruncationIndicatorUsesPromptLimit() {

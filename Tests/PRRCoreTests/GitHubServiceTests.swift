@@ -65,6 +65,7 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertTrue(search.arguments.contains("--owner"))
         XCTAssertTrue(search.arguments.contains("fastlane-dev"))
         XCTAssertTrue(search.arguments.contains("1000"))
+        XCTAssertEqual(search.timeout, GitHubService.longReadTimeout)
 
         let authored = GitHubService.searchAuthoredPRsCommand(gh: gh, owner: "fastlane-dev", repositories: [])
         XCTAssertTrue(authored.arguments.contains("--author=@me"))
@@ -76,6 +77,7 @@ final class GitHubServiceTests: XCTestCase {
             "pr", "view", "42", "-R", "fastlane-dev/beez",
             "--json", "reviewDecision,reviews"
         ])
+        XCTAssertEqual(feedbackDetails.timeout, GitHubService.readTimeout)
 
         let scoped = GitHubService.searchPRsCommand(gh: gh, owner: "fastlane-dev", repositories: ["beez", "acme/web"])
         XCTAssertTrue(scoped.arguments.contains("fastlane-dev/beez"))
@@ -89,10 +91,12 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertTrue(inline.arguments.contains("path=src/a.swift"))
         XCTAssertTrue(inline.arguments.contains("line=10"))
         XCTAssertTrue(inline.arguments.contains("commit_id=abc123"))
+        XCTAssertEqual(inline.timeout, GitHubService.writeTimeout)
 
         let approve = GitHubService.approveCommand(gh: gh, repository: "fastlane-dev/beez", number: 42, body: "LGTM")
         XCTAssertTrue(approve.arguments.contains("--approve"))
         XCTAssertTrue(approve.arguments.contains("LGTM"))
+        XCTAssertEqual(approve.timeout, GitHubService.writeTimeout)
 
         let approveNoBody = GitHubService.approveCommand(gh: gh, repository: "fastlane-dev/beez", number: 42, body: nil)
         XCTAssertFalse(approveNoBody.arguments.contains("--body"))
@@ -103,6 +107,7 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertEqual(batch.arguments, [
             "api", "repos/fastlane-dev/beez/pulls/42/reviews", "--input", "-"
         ])
+        XCTAssertEqual(batch.timeout, GitHubService.writeTimeout)
         let payload = try! JSONSerialization.jsonObject(with: Data(batch.stdin!.utf8)) as! [String: Any]
         XCTAssertEqual(payload["commit_id"] as? String, "abc123")
         XCTAssertEqual(payload["event"] as? String, "APPROVE")
