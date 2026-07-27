@@ -278,6 +278,17 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.feedbackItems.first?.newFeedbackCount, 0)
     }
 
+    func testFeedbackSeenStoreLoadsEmptyAndPersistsValues() {
+        let persistence = AppStateMemoryFeedbackSeenPersistence()
+        let seen = FeedbackSeenStore(persistence: persistence)
+
+        XCTAssertEqual(seen.load(), [:])
+
+        seen.save(["acme/widgets#42": "review-1"])
+
+        XCTAssertEqual(seen.load(), ["acme/widgets#42": "review-1"])
+    }
+
     func testScheduledRefreshPersistsSuccessfulRun() async {
         let memory = AppStateMemoryKeyValueStore()
         let runs = ScheduleRunStore(store: memory, key: "test.schedule")

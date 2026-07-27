@@ -48,7 +48,7 @@ public final class FeedbackSeenStore: @unchecked Sendable {
     }
 
     public func load() -> [String: String] {
-        guard let data = try? persistence.read(), let data else { return [:] }
+        guard let data = try? persistence.read() else { return [:] }
         return (try? decoder.decode([String: String].self, from: data)) ?? [:]
     }
 
