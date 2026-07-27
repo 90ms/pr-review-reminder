@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- External commands inherit the app's environment unless a command explicitly
+  supplies a restricted environment, restoring `gh` keychain authentication.
+- GitHub dependency checks scope the active `github.com` account, distinguish
+  authentication failures from API timeouts, and retry timed-out reads over
+  HTTP/1.1 when the local `gh` HTTP/2 client stalls.
+
 ## [0.5.0] - 2026-07-27
 
 ### Added

@@ -1,5 +1,24 @@
 import Foundation
 
+final class GitHubTransportPreference: @unchecked Sendable {
+    static let shared = GitHubTransportPreference()
+
+    private let lock = NSLock()
+    private var requiresHTTP1 = false
+
+    var shouldUseHTTP1: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return requiresHTTP1
+    }
+
+    func preferHTTP1() {
+        lock.lock()
+        requiresHTTP1 = true
+        lock.unlock()
+    }
+}
+
 public struct GitHubError: Error, Sendable, CustomStringConvertible {
     public let message: String
     public let attempts: Int
@@ -53,6 +72,7 @@ public struct PRDetails: Sendable, Equatable, Codable {
 
 /// Wraps the `gh` CLI. Never authenticates or stores tokens itself.
 public final class GitHubService: Sendable {
+    public static let loginTimeout: TimeInterval = 15
     public static let readTimeout: TimeInterval = 60
     public static let longReadTimeout: TimeInterval = 120
     public static let writeTimeout: TimeInterval = 120
@@ -60,6 +80,7 @@ public final class GitHubService: Sendable {
     private let runner: ProcessRunning
     private let gh: String
     private let readRetryDelays: [UInt64]
+    private let transportPreference: GitHubTransportPreference
 
     public init(
         runner: ProcessRunning,
@@ -69,6 +90,19 @@ public final class GitHubService: Sendable {
         self.runner = runner
         self.gh = ghPath
         self.readRetryDelays = readRetryDelays
+        self.transportPreference = .shared
+    }
+
+    init(
+        runner: ProcessRunning,
+        ghPath: String,
+        readRetryDelays: [UInt64] = [250_000_000, 500_000_000],
+        transportPreference: GitHubTransportPreference
+    ) {
+        self.runner = runner
+        self.gh = ghPath
+        self.readRetryDelays = readRetryDelays
+        self.transportPreference = transportPreference
     }
 
     private struct ReadExecution {
@@ -76,32 +110,92 @@ public final class GitHubService: Sendable {
         let attempts: Int
     }
 
+    private func commandForPreferredTransport(_ command: Command) -> Command {
+        transportPreference.shouldUseHTTP1
+            ? Self.http1FallbackCommand(command)
+            : command
+    }
+
+    private func runOnce(_ command: Command) async throws -> CommandResult {
+        try await runner.run(commandForPreferredTransport(command))
+    }
+
     private func runRead(_ command: Command) async throws -> ReadExecution {
         var lastResult: CommandResult?
-        for attempt in 0...readRetryDelays.count {
+        var lastError: Error?
+        var attempts = 0
+        var retryIndex = 0
+        var usingHTTP1Fallback = transportPreference.shouldUseHTTP1
+        var currentCommand = commandForPreferredTransport(command)
+
+        while true {
+            attempts += 1
             do {
-                let result = try await runner.run(command)
+                let result = try await runner.run(currentCommand)
                 if result.succeeded {
-                    return ReadExecution(result: result, attempts: attempt + 1)
+                    return ReadExecution(result: result, attempts: attempts)
                 }
                 lastResult = result
+                lastError = nil
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let error as ProcessRunnerError {
+                lastResult = nil
+                lastError = error
+                if case .timedOut = error, !usingHTTP1Fallback {
+                    // Some VPN and network-filter combinations stall gh's Go
+                    // HTTP/2 client even though the same API works over
+                    // HTTP/1.1. Preserve the full process environment and retry
+                    // immediately with HTTP/2 disabled.
+                    transportPreference.preferHTTP1()
+                    currentCommand = Self.http1FallbackCommand(command)
+                    usingHTTP1Fallback = true
+                    continue
+                }
             } catch {
-                if attempt == readRetryDelays.count { throw error }
+                lastResult = nil
+                lastError = error
             }
-            guard attempt < readRetryDelays.count else { break }
-            try await Task.sleep(nanoseconds: readRetryDelays[attempt])
+
+            guard retryIndex < readRetryDelays.count else { break }
+            try await Task.sleep(nanoseconds: readRetryDelays[retryIndex])
+            retryIndex += 1
         }
+
         if let lastResult {
             let message = lastResult.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             throw GitHubError(
                 message.isEmpty ? "GitHub read failed." : message,
-                attempts: readRetryDelays.count + 1,
+                attempts: attempts,
                 isRateLimited: Self.isRateLimitMessage(message)
             )
         }
+        if let lastError {
+            throw lastError
+        }
         throw GitHubError("GitHub read failed without a result.")
+    }
+
+    static func http1FallbackCommand(
+        _ command: Command,
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Command {
+        var environment = command.environment ?? processEnvironment
+        var goDebug = environment["GODEBUG", default: ""]
+            .split(separator: ",")
+            .map(String.init)
+            .filter { !$0.hasPrefix("http2client=") }
+        goDebug.append("http2client=0")
+        environment["GODEBUG"] = goDebug.joined(separator: ",")
+
+        return Command(
+            executable: command.executable,
+            arguments: command.arguments,
+            stdin: command.stdin,
+            timeout: command.timeout,
+            workingDirectory: command.workingDirectory,
+            environment: environment
+        )
     }
 
     public static func isRateLimitMessage(_ message: String) -> Bool {
@@ -124,8 +218,8 @@ public final class GitHubService: Sendable {
     public static func currentLoginCommand(gh: String) -> Command {
         Command(
             executable: gh,
-            arguments: ["api", "user", "--jq", ".login"],
-            timeout: readTimeout
+            arguments: ["api", "user", "--hostname", "github.com", "--jq", ".login"],
+            timeout: loginTimeout
         )
     }
 
@@ -560,7 +654,13 @@ public final class GitHubService: Sendable {
 
     @discardableResult
     public func postInlineComment(_ comment: InlineComment, on pr: PullRequest, commitSha: String) async throws -> CommandResult {
-        let result = try await runner.run(Self.inlineCommentCommand(gh: gh, repository: pr.repository, number: pr.number, comment: comment, commitSha: commitSha))
+        let result = try await runOnce(Self.inlineCommentCommand(
+            gh: gh,
+            repository: pr.repository,
+            number: pr.number,
+            comment: comment,
+            commitSha: commitSha
+        ))
         guard result.succeeded else { throw GitHubError("post inline comment failed: \(result.stderr)") }
         return result
     }
@@ -578,7 +678,7 @@ public final class GitHubService: Sendable {
         let command = try Self.reviewCommand(
             gh: gh, repository: pr.repository, number: pr.number,
             comments: comments, commitSha: commitSha, approve: approve, body: body)
-        let result = try await runner.run(command)
+        let result = try await runOnce(command)
         guard result.succeeded else {
             throw GitHubError("post review failed: \(result.stderr)")
         }
@@ -587,7 +687,12 @@ public final class GitHubService: Sendable {
 
     @discardableResult
     public func postSummaryComment(_ body: String, on pr: PullRequest) async throws -> CommandResult {
-        let result = try await runner.run(Self.summaryCommentCommand(gh: gh, repository: pr.repository, number: pr.number, body: body))
+        let result = try await runOnce(Self.summaryCommentCommand(
+            gh: gh,
+            repository: pr.repository,
+            number: pr.number,
+            body: body
+        ))
         guard result.succeeded else { throw GitHubError("post comment failed: \(result.stderr)") }
         return result
     }
@@ -599,7 +704,7 @@ public final class GitHubService: Sendable {
         body: String,
         labels: [String] = []
     ) async throws -> GitHubIssueCreationResult {
-        let result = try await runner.run(FeedbackService.createIssueCommand(
+        let result = try await runOnce(FeedbackService.createIssueCommand(
             gh: gh,
             repository: repository,
             title: title,
@@ -612,7 +717,7 @@ public final class GitHubService: Sendable {
         guard !labels.isEmpty, Self.isLabelFailureMessage(result.stderr) else {
             throw GitHubError("create issue failed: \(result.stderr)")
         }
-        let fallback = try await runner.run(FeedbackService.createIssueCommand(
+        let fallback = try await runOnce(FeedbackService.createIssueCommand(
             gh: gh,
             repository: repository,
             title: title,
@@ -628,14 +733,23 @@ public final class GitHubService: Sendable {
     }
 
     public func fetchIssueStatus(repository: String, number: Int) async throws -> FeedbackIssueStatus {
-        let result = try await runner.run(FeedbackService.viewIssueCommand(gh: gh, repository: repository, number: number))
+        let result = try await runOnce(FeedbackService.viewIssueCommand(
+            gh: gh,
+            repository: repository,
+            number: number
+        ))
         guard result.succeeded else { throw GitHubError("view issue failed: \(result.stderr)") }
         return try FeedbackService.parseIssueStatus(result.stdout)
     }
 
     @discardableResult
     public func approve(_ pr: PullRequest, body: String?) async throws -> CommandResult {
-        let result = try await runner.run(Self.approveCommand(gh: gh, repository: pr.repository, number: pr.number, body: body))
+        let result = try await runOnce(Self.approveCommand(
+            gh: gh,
+            repository: pr.repository,
+            number: pr.number,
+            body: body
+        ))
         guard result.succeeded else { throw GitHubError("approve failed: \(result.stderr)") }
         return result
     }
