@@ -91,13 +91,13 @@ final class AppStateTests: XCTestCase {
     private func makeState(
         settings: AppSettings = AppSettings(notificationsEnabled: false),
         history: HistoryStore = HistoryStore(persistence: AppStateMemoryHistoryPersistence()),
-        feedbackHistory: FeedbackHistoryStore = FeedbackHistoryStore(
-            store: AppStateMemoryKeyValueStore(),
-            key: "test.feedback"
-        ),
         scheduleRunStore: ScheduleRunStore = ScheduleRunStore(
             store: AppStateMemoryKeyValueStore(),
             key: "test.schedule"
+        ),
+        feedbackHistory: FeedbackHistoryStore = FeedbackHistoryStore(
+            store: AppStateMemoryKeyValueStore(),
+            key: "test.feedback"
         ),
         responder: @escaping @Sendable (Command) -> CommandResult
     ) async -> (AppState, MockProcessRunner) {
@@ -121,8 +121,8 @@ final class AppStateTests: XCTestCase {
             runner: runner,
             settingsStore: settingsStore,
             history: history,
-            feedbackHistory: feedbackHistory,
             scheduleRunStore: scheduleRunStore,
+            feedbackHistory: feedbackHistory,
             autoBootstrap: false
         )
         await state.diagnose()

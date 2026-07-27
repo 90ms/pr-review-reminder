@@ -111,10 +111,10 @@ public final class AppState: ObservableObject {
     private let locator: ToolLocator
     private let settingsStore: SettingsStore
     private let history: HistoryStore
-    private let feedbackHistory: FeedbackHistoryStore
     private let scheduleRunStore: ScheduleRunStore
     private let launchAtLoginManager: LaunchAtLoginManaging
     private let sessionHealthStore: SessionHealthStore
+    private let feedbackHistory: FeedbackHistoryStore
 
     private var ghPath: String?
     private var claudePath: String?
@@ -128,19 +128,19 @@ public final class AppState: ObservableObject {
     public init(runner: ProcessRunning = SystemProcessRunner(),
                 settingsStore: SettingsStore = SettingsStore(),
                 history: HistoryStore = HistoryStore(),
-                feedbackHistory: FeedbackHistoryStore = FeedbackHistoryStore(),
                 scheduleRunStore: ScheduleRunStore = ScheduleRunStore(),
                 launchAtLoginManager: LaunchAtLoginManaging = LaunchAtLoginService(),
                 sessionHealthStore: SessionHealthStore = SessionHealthStore(),
+                feedbackHistory: FeedbackHistoryStore = FeedbackHistoryStore(),
                 autoBootstrap: Bool = true) {
         self.runner = runner
         self.locator = ToolLocator(runner: runner)
         self.settingsStore = settingsStore
         self.history = history
-        self.feedbackHistory = feedbackHistory
         self.scheduleRunStore = scheduleRunStore
         self.launchAtLoginManager = launchAtLoginManager
         self.sessionHealthStore = sessionHealthStore
+        self.feedbackHistory = feedbackHistory
         let loadedSettings = settingsStore.load()
         self.settings = loadedSettings
         self.settingsStorageDiagnostic = settingsStore.diagnostic
