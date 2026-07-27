@@ -505,7 +505,7 @@ final class AppStateTests: XCTestCase {
             store: AppStateMemoryKeyValueStore(),
             key: "feedback.submit"
         )
-        let (state, _) = await makeState(feedbackHistory: feedbackHistory) { command in
+        let (state, runner) = await makeState(feedbackHistory: feedbackHistory) { command in
             if command.arguments.prefix(2) == ["issue", "create"] {
                 return CommandResult(
                     exitCode: 0,
