@@ -36,12 +36,37 @@ public final class AIService: Sendable {
 
     public static func buildPrompt(template: String, title: String, body: String, diff: String,
                                    skill: String = "", languageDirective: String = "", maxDiffChars: Int) -> String {
+        buildPrompt(
+            template: template,
+            title: title,
+            body: body,
+            diff: diff,
+            skill: skill,
+            skillPrompts: [],
+            compositionMode: .unified,
+            languageDirective: languageDirective,
+            maxDiffChars: maxDiffChars
+        )
+    }
+
+    public static func buildPrompt(
+        template: String,
+        title: String,
+        body: String,
+        diff: String,
+        skill: String = "",
+        skillPrompts: [String] = [],
+        compositionMode: PromptCompositionMode,
+        languageDirective: String = "",
+        maxDiffChars: Int
+    ) -> String {
         let clippedDiff = diff.count > maxDiffChars
             ? String(diff.prefix(maxDiffChars)) + "\n… [diff truncated]"
             : diff
-        let skillBlock = skill.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? ""
-            : "Reviewer guidelines / skill:\n\(skill)\n"
+        let skillBlock = buildSkillBlock(
+            skill: skill,
+            skillPrompts: compositionMode == .baseWithSkillFiles ? skillPrompts : []
+        )
         var prompt = template
             .replacingOccurrences(of: "{{TITLE}}", with: title)
             .replacingOccurrences(of: "{{BODY}}", with: body.isEmpty ? "(none)" : body)
@@ -51,6 +76,26 @@ public final class AIService: Sendable {
             prompt += "\n\(languageDirective)"
         }
         return prompt
+    }
+
+    public static func buildSkillBlock(skill: String, skillPrompts: [String]) -> String {
+        var parts: [String] = []
+        let trimmedSkill = skill.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSkill.isEmpty {
+            parts.append(trimmedSkill)
+        }
+        parts.append(contentsOf: skillPrompts.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })
+        return parts.isEmpty
+            ? ""
+            : "Reviewer guidelines / skill:\n\(parts.joined(separator: "\n\n---\n\n"))\n"
+    }
+
+    public static func loadSkillPromptFiles(_ paths: [String]) -> [String] {
+        paths.compactMap { path in
+            try? String(contentsOfFile: path, encoding: .utf8)
+        }
     }
 
     // MARK: - Command builders (pure, testable)
@@ -216,6 +261,8 @@ public final class AIService: Sendable {
             template: settings.promptTemplate,
             title: title, body: body, diff: diff,
             skill: settings.reviewSkill,
+            skillPrompts: Self.loadSkillPromptFiles(settings.reviewSkillFilePaths),
+            compositionMode: settings.promptCompositionMode,
             languageDirective: settings.reviewLanguage.promptDirective(),
             maxDiffChars: maxDiffChars
         )
