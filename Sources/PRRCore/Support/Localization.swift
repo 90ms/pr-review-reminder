@@ -232,6 +232,10 @@ public struct L10n: Sendable {
         // feedback window
         "fb_title": "Title",
         "fb_body": "Details",
+        "fb_label": "Label",
+        "fb_label_bug": "Bug",
+        "fb_label_enhancement": "Feature",
+        "fb_label_question": "Question",
         "fb_tidy": "Tidy with agent",
         "fb_submit": "Submit as issue",
         "fb_cancel": "Cancel",
@@ -439,6 +443,10 @@ public struct L10n: Sendable {
         // feedback window
         "fb_title": "제목",
         "fb_body": "내용",
+        "fb_label": "라벨",
+        "fb_label_bug": "버그",
+        "fb_label_enhancement": "기능",
+        "fb_label_question": "문의",
         "fb_tidy": "에이전트로 정돈",
         "fb_submit": "이슈로 등록",
         "fb_cancel": "취소",

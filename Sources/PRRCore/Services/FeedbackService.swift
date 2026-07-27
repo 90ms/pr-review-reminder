@@ -4,6 +4,7 @@ import Foundation
 /// project's repository. It can also tidy the draft via the AI CLI.
 public struct FeedbackService: Sendable {
     public static let repository = "90ms/pr-review-reminder"
+    public static let requiredLabel = "codex-ready"
 
     private let github: GitHubService?
     private let ai: AIService
@@ -15,10 +16,29 @@ public struct FeedbackService: Sendable {
 
     // MARK: - Command builder (pure, testable)
 
-    public static func createIssueCommand(gh: String, repository: String, title: String, body: String) -> Command {
-        Command(executable: gh, arguments: [
+    public enum ClassificationLabel: String, CaseIterable, Identifiable, Sendable, Equatable {
+        case bug
+        case enhancement
+        case question
+
+        public var id: String { rawValue }
+        public var localizationKey: String { "fb_label_\(rawValue)" }
+    }
+
+    public static func createIssueCommand(
+        gh: String,
+        repository: String,
+        title: String,
+        body: String,
+        labels: [String] = []
+    ) -> Command {
+        var arguments = [
             "issue", "create", "-R", repository, "--title", title, "--body", body
-        ])
+        ]
+        for label in labels {
+            arguments.append(contentsOf: ["--label", label])
+        }
+        return Command(executable: gh, arguments: arguments)
     }
 
     public static func viewIssueCommand(gh: String, repository: String, number: Int) -> Command {
@@ -29,8 +49,14 @@ public struct FeedbackService: Sendable {
     }
 
     /// Human-readable rendering of the command (for the preview box).
-    public static func previewString(gh: String, repository: String, title: String, body: String) -> String {
-        let cmd = createIssueCommand(gh: gh, repository: repository, title: title, body: body)
+    public static func previewString(
+        gh: String,
+        repository: String,
+        title: String,
+        body: String,
+        labels: [String] = []
+    ) -> String {
+        let cmd = createIssueCommand(gh: gh, repository: repository, title: title, body: body, labels: labels)
         func quote(_ s: String) -> String {
             s.contains(" ") || s.contains("\n") ? "\"\(s.replacingOccurrences(of: "\n", with: "\\n"))\"" : s
         }
@@ -92,20 +118,32 @@ public struct FeedbackService: Sendable {
 
     /// Submits feedback to the project repository. Without an available GitHub
     /// service, returns `.held` with a preview and does not execute anything.
-    public func submit(title: String, body: String, ghPath: String?) async throws -> SubmitResult {
+    public static func labels(for classification: ClassificationLabel) -> [String] {
+        [requiredLabel, classification.rawValue]
+    }
+
+    public func submit(
+        title: String,
+        body: String,
+        classification: ClassificationLabel,
+        ghPath: String?
+    ) async throws -> SubmitResult {
+        let labels = Self.labels(for: classification)
         let gh = ghPath ?? "gh"
         guard let github else {
             return .held(preview: Self.previewString(
                 gh: gh,
                 repository: Self.repository,
                 title: title,
-                body: body
+                body: body,
+                labels: labels
             ))
         }
         let result = try await github.createIssue(
             repository: Self.repository,
             title: title,
-            body: body
+            body: body,
+            labels: labels
         )
         let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return .created(

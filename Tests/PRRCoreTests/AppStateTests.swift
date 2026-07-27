@@ -545,7 +545,7 @@ final class AppStateTests: XCTestCase {
             store: AppStateMemoryKeyValueStore(),
             key: "feedback.submit"
         )
-        let (state, _) = await makeState(feedbackHistory: feedbackHistory) { command in
+        let (state, runner) = await makeState(feedbackHistory: feedbackHistory) { command in
             if command.arguments.prefix(2) == ["issue", "create"] {
                 return CommandResult(
                     exitCode: 0,
@@ -563,6 +563,9 @@ final class AppStateTests: XCTestCase {
         }
         XCTAssertEqual(state.feedbackRecords.map(\.number), [123])
         XCTAssertEqual(feedbackHistory.all().first?.title, "Bug")
+        XCTAssertTrue(runner.commands.last?.arguments.contains("--label") == true)
+        XCTAssertTrue(runner.commands.last?.arguments.contains("codex-ready") == true)
+        XCTAssertTrue(runner.commands.last?.arguments.contains("question") == true)
     }
 
     func testFeedbackHistoryRefreshUpdatesIssueStatus() async {

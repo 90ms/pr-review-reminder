@@ -547,9 +547,27 @@ public final class GitHubService: Sendable {
     }
 
     @discardableResult
-    public func createIssue(repository: String, title: String, body: String) async throws -> CommandResult {
-        let result = try await runner.run(FeedbackService.createIssueCommand(gh: gh, repository: repository, title: title, body: body))
-        guard result.succeeded else { throw GitHubError("create issue failed: \(result.stderr)") }
+    public func createIssue(repository: String, title: String, body: String, labels: [String] = []) async throws -> CommandResult {
+        let result = try await runner.run(FeedbackService.createIssueCommand(
+            gh: gh,
+            repository: repository,
+            title: title,
+            body: body,
+            labels: labels
+        ))
+        guard result.succeeded else {
+            guard !labels.isEmpty else {
+                throw GitHubError("create issue failed: \(result.stderr)")
+            }
+            let fallback = try await runner.run(FeedbackService.createIssueCommand(
+                gh: gh,
+                repository: repository,
+                title: title,
+                body: body
+            ))
+            guard fallback.succeeded else { throw GitHubError("create issue failed: \(fallback.stderr)") }
+            return fallback
+        }
         return result
     }
 
