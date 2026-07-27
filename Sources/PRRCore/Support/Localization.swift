@@ -249,6 +249,7 @@ public struct L10n: Sendable {
         "fb_closed": "Closed",
         "fb_resolved": "Resolved",
         "fb_unknown": "Unknown",
+        "fb_labels_omitted": "The issue was created, but GitHub rejected these labels: %@. Add them manually to start the approval automation.",
     ]
 
     static let ko: [String: String] = [
@@ -460,6 +461,7 @@ public struct L10n: Sendable {
         "fb_closed": "닫힘",
         "fb_resolved": "해결됨",
         "fb_unknown": "알 수 없음",
+        "fb_labels_omitted": "이슈는 생성됐지만 GitHub가 다음 라벨을 거부했습니다: %@. 승인 자동화를 시작하려면 라벨을 직접 추가하세요.",
     ]
 
     static let table: [String: [String: String]] = ["en": en, "ko": ko]

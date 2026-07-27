@@ -65,5 +65,31 @@ final class ProcessRunnerTests: XCTestCase {
     func testCommandDefaultsToNoTimeout() {
         let command = Command(executable: "/bin/true", arguments: [])
         XCTAssertNil(command.timeout)
+        XCTAssertNil(command.workingDirectory)
+        XCTAssertNil(command.environment)
+    }
+
+    func testCommandAppliesWorkingDirectoryAndRestrictedEnvironment() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PRR-ProcessRunnerTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let runner = SystemProcessRunner()
+        let result = try await runner.run(Command(
+            executable: "/bin/sh",
+            arguments: ["-c", "pwd; printf '\\n%s\\n' \"$VISIBLE_VALUE\"; printf '%s' \"${HIDDEN_VALUE-unset}\""],
+            timeout: 5,
+            workingDirectory: directory.path,
+            environment: [
+                "PATH": "/usr/bin:/bin",
+                "VISIBLE_VALUE": "visible",
+            ]
+        ))
+
+        let lines = result.stdout.split(separator: "\n", omittingEmptySubsequences: false)
+        XCTAssertEqual(lines.first.map(String.init), directory.path)
+        XCTAssertTrue(result.stdout.contains("\nvisible\n"))
+        XCTAssertTrue(result.stdout.hasSuffix("unset"))
     }
 }

@@ -752,7 +752,7 @@ public final class AppState: ObservableObject {
                 classification: classification,
                 ghPath: ghPath
             )
-            if case .created(_, let record?) = result {
+            if case .created(_, let record?, _) = result {
                 feedbackHistory.upsert(record)
                 feedbackHistoryStorageDiagnostic = feedbackHistory.diagnostic
                 feedbackRecords = feedbackHistory.all()

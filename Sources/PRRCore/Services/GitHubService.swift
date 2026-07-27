@@ -24,6 +24,16 @@ public struct GitHubFeedbackFetchResult: Sendable, Equatable {
     public let reachedSearchLimit: Bool
 }
 
+public struct GitHubIssueCreationResult: Sendable, Equatable {
+    public let commandResult: CommandResult
+    public let omittedLabels: [String]
+
+    public init(commandResult: CommandResult, omittedLabels: [String] = []) {
+        self.commandResult = commandResult
+        self.omittedLabels = omittedLabels
+    }
+}
+
 /// Extra per-PR details fetched on demand (not available from search).
 public struct PRDetails: Sendable, Equatable, Codable {
     public let body: String
@@ -43,6 +53,10 @@ public struct PRDetails: Sendable, Equatable, Codable {
 
 /// Wraps the `gh` CLI. Never authenticates or stores tokens itself.
 public final class GitHubService: Sendable {
+    public static let readTimeout: TimeInterval = 60
+    public static let longReadTimeout: TimeInterval = 120
+    public static let writeTimeout: TimeInterval = 120
+
     private let runner: ProcessRunning
     private let gh: String
     private let readRetryDelays: [UInt64]
@@ -95,10 +109,24 @@ public final class GitHubService: Sendable {
         return lower.contains("rate limit") || lower.contains("api rate")
     }
 
+    public static func isLabelFailureMessage(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        guard lower.contains("label") else { return false }
+        return lower.contains("not found")
+            || lower.contains("does not exist")
+            || lower.contains("could not add")
+            || lower.contains("could not resolve")
+            || lower.contains("unprocessable")
+    }
+
     // MARK: - Command builders (pure, testable)
 
     public static func currentLoginCommand(gh: String) -> Command {
-        Command(executable: gh, arguments: ["api", "user", "--jq", ".login"])
+        Command(
+            executable: gh,
+            arguments: ["api", "user", "--jq", ".login"],
+            timeout: readTimeout
+        )
     }
 
     /// `gh search` paginates internally up to this limit. GitHub Search exposes
@@ -117,7 +145,7 @@ public final class GitHubService: Sendable {
                 args += ["--repo", full]
             }
         }
-        return Command(executable: gh, arguments: args)
+        return Command(executable: gh, arguments: args, timeout: longReadTimeout)
     }
 
     public static func searchAuthoredPRsCommand(gh: String, owner: String, repositories: [String], limit: Int = 1_000) -> Command {
@@ -134,31 +162,44 @@ public final class GitHubService: Sendable {
                 args += ["--repo", full]
             }
         }
-        return Command(executable: gh, arguments: args)
+        return Command(executable: gh, arguments: args, timeout: longReadTimeout)
     }
 
     public static func reviewsCommand(gh: String, repository: String, number: Int) -> Command {
-        Command(executable: gh, arguments: ["api", "repos/\(repository)/pulls/\(number)/reviews", "--paginate"])
+        Command(
+            executable: gh,
+            arguments: ["api", "repos/\(repository)/pulls/\(number)/reviews", "--paginate"],
+            timeout: longReadTimeout
+        )
     }
 
     public static func feedbackDetailsCommand(gh: String, repository: String, number: Int) -> Command {
         Command(executable: gh, arguments: [
             "pr", "view", String(number), "-R", repository,
             "--json", "reviewDecision,reviews"
-        ])
+        ], timeout: readTimeout)
     }
 
     public static func detailsCommand(gh: String, repository: String, number: Int) -> Command {
         Command(executable: gh, arguments: ["pr", "view", String(number), "-R", repository,
-                                            "--json", "body,headRefOid,additions,deletions"])
+                                            "--json", "body,headRefOid,additions,deletions"],
+                timeout: readTimeout)
     }
 
     public static func diffCommand(gh: String, repository: String, number: Int) -> Command {
-        Command(executable: gh, arguments: ["pr", "diff", String(number), "-R", repository])
+        Command(
+            executable: gh,
+            arguments: ["pr", "diff", String(number), "-R", repository],
+            timeout: longReadTimeout
+        )
     }
 
     public static func headShaCommand(gh: String, repository: String, number: Int) -> Command {
-        Command(executable: gh, arguments: ["pr", "view", String(number), "-R", repository, "--json", "headRefOid", "--jq", ".headRefOid"])
+        Command(
+            executable: gh,
+            arguments: ["pr", "view", String(number), "-R", repository, "--json", "headRefOid", "--jq", ".headRefOid"],
+            timeout: readTimeout
+        )
     }
 
     public static func inlineCommentCommand(gh: String, repository: String, number: Int,
@@ -170,7 +211,7 @@ public final class GitHubService: Sendable {
             "-F", "line=\(comment.line)",
             "-f", "side=\(comment.side)",
             "-f", "commit_id=\(commitSha)"
-        ])
+        ], timeout: writeTimeout)
     }
 
     public static func reviewCommand(
@@ -209,18 +250,23 @@ public final class GitHubService: Sendable {
         return Command(
             executable: gh,
             arguments: ["api", "repos/\(repository)/pulls/\(number)/reviews", "--input", "-"],
-            stdin: json
+            stdin: json,
+            timeout: writeTimeout
         )
     }
 
     public static func summaryCommentCommand(gh: String, repository: String, number: Int, body: String) -> Command {
-        Command(executable: gh, arguments: ["pr", "comment", String(number), "-R", repository, "--body", body])
+        Command(
+            executable: gh,
+            arguments: ["pr", "comment", String(number), "-R", repository, "--body", body],
+            timeout: writeTimeout
+        )
     }
 
     public static func approveCommand(gh: String, repository: String, number: Int, body: String?) -> Command {
         var args = ["pr", "review", String(number), "-R", repository, "--approve"]
         if let body, !body.isEmpty { args += ["--body", body] }
-        return Command(executable: gh, arguments: args)
+        return Command(executable: gh, arguments: args, timeout: writeTimeout)
     }
 
     // MARK: - Parsers (pure, testable)
@@ -547,7 +593,12 @@ public final class GitHubService: Sendable {
     }
 
     @discardableResult
-    public func createIssue(repository: String, title: String, body: String, labels: [String] = []) async throws -> CommandResult {
+    public func createIssue(
+        repository: String,
+        title: String,
+        body: String,
+        labels: [String] = []
+    ) async throws -> GitHubIssueCreationResult {
         let result = try await runner.run(FeedbackService.createIssueCommand(
             gh: gh,
             repository: repository,
@@ -555,20 +606,25 @@ public final class GitHubService: Sendable {
             body: body,
             labels: labels
         ))
-        guard result.succeeded else {
-            guard !labels.isEmpty else {
-                throw GitHubError("create issue failed: \(result.stderr)")
-            }
-            let fallback = try await runner.run(FeedbackService.createIssueCommand(
-                gh: gh,
-                repository: repository,
-                title: title,
-                body: body
-            ))
-            guard fallback.succeeded else { throw GitHubError("create issue failed: \(fallback.stderr)") }
-            return fallback
+        if result.succeeded {
+            return GitHubIssueCreationResult(commandResult: result)
         }
-        return result
+        guard !labels.isEmpty, Self.isLabelFailureMessage(result.stderr) else {
+            throw GitHubError("create issue failed: \(result.stderr)")
+        }
+        let fallback = try await runner.run(FeedbackService.createIssueCommand(
+            gh: gh,
+            repository: repository,
+            title: title,
+            body: body
+        ))
+        guard fallback.succeeded else {
+            throw GitHubError("create issue failed: \(fallback.stderr)")
+        }
+        return GitHubIssueCreationResult(
+            commandResult: fallback,
+            omittedLabels: labels
+        )
     }
 
     public func fetchIssueStatus(repository: String, number: Int) async throws -> FeedbackIssueStatus {

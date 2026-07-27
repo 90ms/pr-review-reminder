@@ -38,7 +38,7 @@ public struct DependencyDoctor: Sendable {
     }
 
     public static func authStatusCommand(gh: String) -> Command {
-        Command(executable: gh, arguments: ["auth", "status"])
+        Command(executable: gh, arguments: ["auth", "status"], timeout: 30)
     }
 
     public func diagnose() async -> DependencyStatus {

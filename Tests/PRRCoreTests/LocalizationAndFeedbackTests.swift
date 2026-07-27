@@ -224,7 +224,7 @@ final class LocalizationAndFeedbackTests: XCTestCase {
 
         let result = try? await feedback.submit(title: "Bug", body: "It broke", classification: .bug, ghPath: "/usr/bin/gh")
 
-        guard case .created(let output, let record?) = result else {
+        guard case .created(let output, let record?, let omittedLabels) = result else {
             return XCTFail("expected created")
         }
         XCTAssertEqual(output, "https://github.com/90ms/pr-review-reminder/issues/123")
@@ -233,6 +233,8 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         XCTAssertEqual(record.title, "Bug")
         XCTAssertEqual(record.body, "It broke")
         XCTAssertEqual(record.url, "https://github.com/90ms/pr-review-reminder/issues/123")
+        XCTAssertTrue(omittedLabels.isEmpty)
+        XCTAssertEqual(mock.commands.last?.timeout, GitHubService.writeTimeout)
         XCTAssertEqual(
             mock.commands.last?.arguments,
             [
@@ -261,13 +263,40 @@ final class LocalizationAndFeedbackTests: XCTestCase {
 
         let result = try? await feedback.submit(title: "Question", body: "How?", classification: .question, ghPath: "/usr/bin/gh")
 
-        guard case .created(let output, let record?) = result else {
+        guard case .created(let output, let record?, let omittedLabels) = result else {
             return XCTFail("expected created")
         }
         XCTAssertEqual(output, "https://github.com/90ms/pr-review-reminder/issues/124")
         XCTAssertEqual(record.number, 124)
+        XCTAssertEqual(omittedLabels, ["codex-ready", "question"])
         XCTAssertEqual(mock.commands.count, 2)
         XCTAssertTrue(mock.commands[0].arguments.contains("--label"))
         XCTAssertFalse(mock.commands[1].arguments.contains("--label"))
+    }
+
+    func testSubmitDoesNotRetryWithoutLabelsForUnrelatedFailures() async {
+        let mock = MockProcessRunner()
+        mock.defaultResult = CommandResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "network connection failed"
+        )
+        let github = GitHubService(runner: mock, ghPath: "/usr/bin/gh")
+        let ai = AIService(runner: mock, claudePath: "/bin/claude", codexPath: nil)
+        let feedback = FeedbackService(github: github, ai: ai)
+
+        do {
+            _ = try await feedback.submit(
+                title: "Question",
+                body: "How?",
+                classification: .question,
+                ghPath: "/usr/bin/gh"
+            )
+            XCTFail("Expected issue creation to fail")
+        } catch {
+            XCTAssertTrue("\(error)".contains("network connection failed"))
+        }
+        XCTAssertEqual(mock.commands.count, 1)
+        XCTAssertTrue(mock.commands[0].arguments.contains("--label"))
     }
 }

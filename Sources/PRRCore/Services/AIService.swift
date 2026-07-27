@@ -92,10 +92,23 @@ public final class AIService: Sendable {
             : "Reviewer guidelines / skill:\n\(parts.joined(separator: "\n\n---\n\n"))\n"
     }
 
-    public static func loadSkillPromptFiles(_ paths: [String]) -> [String] {
-        paths.compactMap { path in
-            try? String(contentsOfFile: path, encoding: .utf8)
+    public static func loadSkillPromptFiles(_ paths: [String]) throws -> [String] {
+        var prompts: [String] = []
+        var failures: [String] = []
+        for path in paths {
+            do {
+                prompts.append(try String(contentsOfFile: path, encoding: .utf8))
+            } catch {
+                failures.append("\(path): \(error.localizedDescription)")
+            }
         }
+        guard failures.isEmpty else {
+            throw AIError(
+                "Could not read the selected review skill file(s):\n"
+                + failures.joined(separator: "\n")
+            )
+        }
+        return prompts
     }
 
     // MARK: - Command builders (pure, testable)
@@ -105,7 +118,13 @@ public final class AIService: Sendable {
     public static func claudeCommand(claude: String) -> Command {
         Command(
             executable: claude,
-            arguments: ["-p", "--output-format", "json"],
+            arguments: [
+                "-p",
+                "--output-format", "json",
+                "--max-turns", "1",
+                "--permission-mode", "plan",
+                "--disallowedTools", "Bash,Edit,Write,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch,Task",
+            ],
             timeout: defaultAnalysisTimeout
         )
     }
@@ -116,9 +135,32 @@ public final class AIService: Sendable {
     public static func codexCommand(codex: String) -> Command {
         Command(
             executable: codex,
-            arguments: ["exec", "--skip-git-repo-check", "-s", "read-only", "-"],
+            arguments: [
+                "exec",
+                "--skip-git-repo-check",
+                "--ephemeral",
+                "--ignore-user-config",
+                "--ignore-rules",
+                "-s", "read-only",
+                "-",
+            ],
             timeout: defaultAnalysisTimeout
         )
+    }
+
+    /// External AI processes receive only the environment needed to locate the
+    /// user's installed CLI and its persisted login. Shell-exported API tokens
+    /// and unrelated application secrets are deliberately not inherited.
+    public static func restrictedEnvironment(
+        from source: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        let allowed = Set([
+            "HOME", "PATH", "SHELL", "USER", "LOGNAME",
+            "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR",
+            "SSL_CERT_FILE", "SSL_CERT_DIR",
+            "CODEX_HOME", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME",
+        ])
+        return source.filter { allowed.contains($0.key) }
     }
 
     // MARK: - Lenient JSON parsing (pure, testable)
@@ -257,11 +299,21 @@ public final class AIService: Sendable {
     // MARK: - Async operation
 
     public func analyze(title: String, body: String, diff: String, settings: AppSettings) async throws -> (analysis: Analysis, usage: AIUsage?) {
+        let skillPrompts: [String]
+        if settings.promptCompositionMode == .baseWithSkillFiles {
+            skillPrompts = try Self.loadSkillPromptFiles(settings.reviewSkillFilePaths)
+        } else {
+            skillPrompts = []
+        }
+        if (!settings.reviewSkill.isEmpty || !skillPrompts.isEmpty),
+           !settings.promptTemplate.contains("{{SKILL}}") {
+            throw AIError("The review prompt template must contain {{SKILL}} to include the selected review guidelines.")
+        }
         let prompt = Self.buildPrompt(
             template: settings.promptTemplate,
             title: title, body: body, diff: diff,
             skill: settings.reviewSkill,
-            skillPrompts: Self.loadSkillPromptFiles(settings.reviewSkillFilePaths),
+            skillPrompts: skillPrompts,
             compositionMode: settings.promptCompositionMode,
             languageDirective: settings.reviewLanguage.promptDirective(),
             maxDiffChars: maxDiffChars
@@ -291,6 +343,18 @@ public final class AIService: Sendable {
 
     /// Runs an arbitrary prompt through the selected CLI and returns the full result.
     public func complete(prompt: String, tool: AITool) async throws -> CommandResult {
+        let workingDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PRReviewReminder-AI-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: workingDirectory,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            throw AIError("Could not create an isolated AI working directory: \(error.localizedDescription)")
+        }
+        defer { try? FileManager.default.removeItem(at: workingDirectory) }
+
         let command: Command
         switch tool {
         case .claude:
@@ -300,7 +364,14 @@ public final class AIService: Sendable {
             guard let codex = codexPath else { throw AIError("codex CLI not found") }
             command = Self.codexCommand(codex: codex)
         }
-        let withStdin = Command(executable: command.executable, arguments: command.arguments, stdin: prompt)
+        let withStdin = Command(
+            executable: command.executable,
+            arguments: command.arguments,
+            stdin: prompt,
+            timeout: command.timeout,
+            workingDirectory: workingDirectory.path,
+            environment: Self.restrictedEnvironment()
+        )
         let result = try await runner.run(withStdin)
         guard result.succeeded else {
             throw AIError("\(tool.displayName) failed: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
