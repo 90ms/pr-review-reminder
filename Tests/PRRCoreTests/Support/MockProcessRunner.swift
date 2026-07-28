@@ -6,12 +6,12 @@ import Foundation
 final class MockProcessRunner: ProcessRunning, @unchecked Sendable {
     private(set) var commands: [Command] = []
     /// Returns a canned result for a given command; first match wins.
-    var responder: (@Sendable (Command) -> CommandResult)?
+    var responder: (@Sendable (Command) throws -> CommandResult)?
     var defaultResult = CommandResult(exitCode: 0, stdout: "", stderr: "")
 
     func run(_ command: Command) async throws -> CommandResult {
         commands.append(command)
-        return responder?(command) ?? defaultResult
+        return try responder?(command) ?? defaultResult
     }
 }
 

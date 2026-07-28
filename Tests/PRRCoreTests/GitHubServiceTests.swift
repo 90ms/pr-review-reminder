@@ -60,6 +60,12 @@ final class GitHubServiceTests: XCTestCase {
     // AC7 — publishing commands are constructed correctly (no real posting).
     func testCommandConstruction() {
         let gh = "/usr/bin/gh"
+        let login = GitHubService.currentLoginCommand(gh: gh)
+        XCTAssertEqual(login.arguments, [
+            "api", "user", "--hostname", "github.com", "--jq", ".login"
+        ])
+        XCTAssertEqual(login.timeout, GitHubService.loginTimeout)
+
         let search = GitHubService.searchPRsCommand(gh: gh, owner: "fastlane-dev", repositories: [])
         XCTAssertTrue(search.arguments.contains("--review-requested=@me"))
         XCTAssertTrue(search.arguments.contains("--owner"))
@@ -214,6 +220,72 @@ final class GitHubServiceTests: XCTestCase {
         let sha = try await service.fetchHeadSha(pr)
         XCTAssertEqual(sha, "sha")
         XCTAssertEqual(attempts.value, 2)
+    }
+
+    func testReadTimeoutRetriesWithHTTP1AndInheritedEnvironment() async throws {
+        let mock = MockProcessRunner()
+        let transportPreference = GitHubTransportPreference()
+        mock.responder = { command in
+            guard command.environment?["GODEBUG"]?.contains("http2client=0") == true else {
+                throw ProcessRunnerError.timedOut(GitHubService.loginTimeout)
+            }
+            return CommandResult(exitCode: 0, stdout: "kms-yeoshin\n", stderr: "")
+        }
+        let service = GitHubService(
+            runner: mock,
+            ghPath: "/usr/bin/gh",
+            readRetryDelays: [],
+            transportPreference: transportPreference
+        )
+
+        let login = try await service.currentLogin()
+
+        XCTAssertEqual(login, "kms-yeoshin")
+        XCTAssertEqual(mock.commands.count, 2)
+        XCTAssertNil(mock.commands[0].environment)
+        XCTAssertEqual(
+            mock.commands[1].environment?["HOME"],
+            ProcessInfo.processInfo.environment["HOME"]
+        )
+        let http2Settings = mock.commands[1].environment?["GODEBUG"]?
+            .split(separator: ",")
+            .map(String.init)
+            .filter { $0.hasPrefix("http2client=") }
+        XCTAssertEqual(http2Settings, ["http2client=0"])
+
+        let nextMock = MockProcessRunner()
+        nextMock.defaultResult = CommandResult(
+            exitCode: 0,
+            stdout: "kms-yeoshin\n",
+            stderr: ""
+        )
+        let nextService = GitHubService(
+            runner: nextMock,
+            ghPath: "/usr/bin/gh",
+            readRetryDelays: [],
+            transportPreference: transportPreference
+        )
+
+        _ = try await nextService.currentLogin()
+
+        XCTAssertTrue(
+            nextMock.commands[0].environment?["GODEBUG"]?
+                .contains("http2client=0") == true
+        )
+
+        let pr = PullRequest(
+            repository: "acme/widgets",
+            number: 42,
+            title: "Title",
+            author: "octocat",
+            url: "https://example.com/pr/42"
+        )
+        _ = try await nextService.approve(pr, body: nil)
+
+        XCTAssertTrue(
+            nextMock.commands[1].environment?["GODEBUG"]?
+                .contains("http2client=0") == true
+        )
     }
 
     func testFetchResultReportsSuccessfulRetry() async throws {

@@ -84,7 +84,13 @@ public final class SystemProcessRunner: ProcessRunning {
                     process.currentDirectoryURL = command.workingDirectory.map {
                         URL(fileURLWithPath: $0, isDirectory: true)
                     }
-                    process.environment = command.environment
+                    // Foundation only inherits the parent environment when the
+                    // environment setter is not used. Assigning nil explicitly
+                    // launches the child with an empty environment on macOS,
+                    // which hides HOME and breaks gh's keychain-backed auth.
+                    if let environment = command.environment {
+                        process.environment = environment
+                    }
 
                     let stdoutPipe = Pipe()
                     let stderrPipe = Pipe()
