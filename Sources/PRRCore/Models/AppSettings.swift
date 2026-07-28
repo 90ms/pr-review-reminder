@@ -21,13 +21,6 @@ public enum ScheduleMode: String, Sendable, Codable, CaseIterable, Identifiable 
     public var id: String { rawValue }
 }
 
-public enum PromptCompositionMode: String, Sendable, Codable, CaseIterable, Identifiable {
-    case unified
-    case baseWithSkillFiles
-
-    public var id: String { rawValue }
-}
-
 public struct AppSettings: Sendable, Codable, Equatable {
     /// GitHub org/owner to scan (e.g. "fastlane-dev"). Required.
     public var owner: String
@@ -42,15 +35,13 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var launchAtLogin: Bool
     /// User-editable prompt template. `{{DIFF}}`, `{{TITLE}}`, `{{BODY}}`, `{{SKILL}}` are substituted.
     public var promptTemplate: String
-    /// How the review prompt is assembled before execution.
-    public var promptCompositionMode: PromptCompositionMode
     /// UI language of the app. `.system` follows the OS locale.
     public var appLanguage: AppLanguage
     /// Language the AI should write the review in. `.system` follows the OS locale.
     public var reviewLanguage: AppLanguage
     /// Extra reviewer guidelines / "skill" injected into the prompt via `{{SKILL}}`.
     public var reviewSkill: String
-    /// Optional child skill prompt files used by the base + child prompt mode.
+    /// Optional reviewer guideline files appended to `reviewSkill`.
     public var reviewSkillFilePaths: [String]
     /// When true, code review runs automatically for every fetched PR. When false
     /// (default), collection only fetches PRs and review is triggered per-PR by the user.
@@ -81,7 +72,6 @@ public struct AppSettings: Sendable, Codable, Equatable {
         notificationsEnabled: Bool = true,
         launchAtLogin: Bool = false,
         promptTemplate: String = AppSettings.defaultPromptTemplate,
-        promptCompositionMode: PromptCompositionMode = .unified,
         appLanguage: AppLanguage = .system,
         reviewLanguage: AppLanguage = .system,
         reviewSkill: String = "",
@@ -104,7 +94,6 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.notificationsEnabled = notificationsEnabled
         self.launchAtLogin = launchAtLogin
         self.promptTemplate = promptTemplate
-        self.promptCompositionMode = promptCompositionMode
         self.appLanguage = appLanguage
         self.reviewLanguage = reviewLanguage
         self.reviewSkill = reviewSkill
@@ -133,7 +122,6 @@ public struct AppSettings: Sendable, Codable, Equatable {
         notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? d.notificationsEnabled
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         promptTemplate = try c.decodeIfPresent(String.self, forKey: .promptTemplate) ?? d.promptTemplate
-        promptCompositionMode = try c.decodeIfPresent(PromptCompositionMode.self, forKey: .promptCompositionMode) ?? d.promptCompositionMode
         appLanguage = try c.decodeIfPresent(AppLanguage.self, forKey: .appLanguage) ?? d.appLanguage
         reviewLanguage = try c.decodeIfPresent(AppLanguage.self, forKey: .reviewLanguage) ?? d.reviewLanguage
         reviewSkill = try c.decodeIfPresent(String.self, forKey: .reviewSkill) ?? d.reviewSkill

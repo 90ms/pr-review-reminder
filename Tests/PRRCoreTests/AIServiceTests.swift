@@ -152,7 +152,6 @@ final class AIServiceTests: XCTestCase {
             diff: "diff",
             skill: "Base guideline",
             skillPrompts: ["Security checks", "Accessibility checks"],
-            compositionMode: .baseWithSkillFiles,
             maxDiffChars: 1000
         )
 
@@ -162,7 +161,7 @@ final class AIServiceTests: XCTestCase {
         XCTAssertTrue(prompt.contains("---"))
     }
 
-    func testBuildPromptIgnoresChildSkillPromptsInUnifiedMode() {
+    func testBuildPromptAlwaysIncludesGuidelineFiles() {
         let prompt = AIService.buildPrompt(
             template: "{{SKILL}}",
             title: "title",
@@ -170,12 +169,11 @@ final class AIServiceTests: XCTestCase {
             diff: "diff",
             skill: "Inline guideline",
             skillPrompts: ["External file guideline"],
-            compositionMode: .unified,
             maxDiffChars: 1000
         )
 
         XCTAssertTrue(prompt.contains("Inline guideline"))
-        XCTAssertFalse(prompt.contains("External file guideline"))
+        XCTAssertTrue(prompt.contains("External file guideline"))
     }
 
     // Usage: parse claude JSON wrapper for text + tokens + cost.
