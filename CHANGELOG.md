@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Reviews with no inline comments or review points expose a localized
+  "No issues · Approve" action with a prefilled approval message.
+- Review settings can discover Markdown guidance from a repository's default
+  branch, let the selected Claude/Codex CLI classify relevant review,
+  convention, and architecture documents, and apply imports by repository and
+  `AGENTS.md` directory scope.
+
+### Changed
+
+- Settings are organized into General, Review, Automation, Data, and Advanced;
+  app updates now live under General.
+- Prompt composition no longer exposes Unified/Base + Files modes. Inline
+  guidance, local files, and imported repository documents are always combined.
+
 ## [0.5.1] - 2026-07-27
 
 ### Fixed
