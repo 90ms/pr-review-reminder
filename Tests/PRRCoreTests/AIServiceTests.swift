@@ -176,6 +176,46 @@ final class AIServiceTests: XCTestCase {
         XCTAssertTrue(prompt.contains("External file guideline"))
     }
 
+    func testImportedGuidelinesAreFilteredByRepositoryAndChangedPath() {
+        var settings = AppSettings()
+        settings.importedReviewGuidelines = [
+            ImportedReviewGuideline(
+                repository: "acme/app",
+                path: "AGENTS.md",
+                revision: "root",
+                category: .review,
+                reason: "",
+                content: "Root rule"
+            ),
+            ImportedReviewGuideline(
+                repository: "acme/app",
+                path: "Sources/API/AGENTS.md",
+                revision: "api",
+                category: .conventions,
+                reason: "",
+                content: "API rule"
+            ),
+            ImportedReviewGuideline(
+                repository: "other/app",
+                path: "AGENTS.md",
+                revision: "other",
+                category: .review,
+                reason: "",
+                content: "Other rule"
+            ),
+        ]
+
+        let prompts = AIService.importedGuidelinePrompts(
+            repository: "acme/app",
+            diff: "diff --git a/Sources/UI/View.swift b/Sources/UI/View.swift",
+            settings: settings
+        )
+
+        XCTAssertTrue(prompts.contains { $0.contains("Root rule") })
+        XCTAssertFalse(prompts.contains { $0.contains("API rule") })
+        XCTAssertFalse(prompts.contains { $0.contains("Other rule") })
+    }
+
     // Usage: parse claude JSON wrapper for text + tokens + cost.
     func testParseClaudeJSONUsage() {
         let raw = """

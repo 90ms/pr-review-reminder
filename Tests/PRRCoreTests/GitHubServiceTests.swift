@@ -118,6 +118,24 @@ final class GitHubServiceTests: XCTestCase {
         XCTAssertEqual(payload["commit_id"] as? String, "abc123")
         XCTAssertEqual(payload["event"] as? String, "APPROVE")
         XCTAssertEqual((payload["comments"] as? [[String: Any]])?.count, 1)
+
+        let tree = GitHubService.repositoryTreeCommand(
+            gh: gh,
+            repository: "acme/app",
+            revision: "abc123"
+        )
+        XCTAssertEqual(tree.arguments, [
+            "api", "repos/acme/app/git/trees/abc123",
+            "-f", "recursive=1", "--method", "GET",
+        ])
+        let file = GitHubService.repositoryFileCommand(
+            gh: gh,
+            repository: "acme/app",
+            path: "docs/code review.md",
+            revision: "abc123"
+        )
+        XCTAssertTrue(file.arguments.contains("repos/acme/app/contents/docs/code%20review.md"))
+        XCTAssertTrue(file.arguments.contains("Accept: application/vnd.github.raw+json"))
     }
 
     func testParseFeedbackDetailsFiltersApprovedAndClassifiesStatus() throws {

@@ -43,6 +43,8 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var reviewSkill: String
     /// Optional reviewer guideline files appended to `reviewSkill`.
     public var reviewSkillFilePaths: [String]
+    /// Repository documents discovered and selected as review context.
+    public var importedReviewGuidelines: [ImportedReviewGuideline]
     /// When true, code review runs automatically for every fetched PR. When false
     /// (default), collection only fetches PRs and review is triggered per-PR by the user.
     public var autoReview: Bool
@@ -76,6 +78,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         reviewLanguage: AppLanguage = .system,
         reviewSkill: String = "",
         reviewSkillFilePaths: [String] = [],
+        importedReviewGuidelines: [ImportedReviewGuideline] = [],
         autoReview: Bool = false,
         historyEnabled: Bool = true,
         historyRetentionDays: Int = 0,
@@ -98,6 +101,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.reviewLanguage = reviewLanguage
         self.reviewSkill = reviewSkill
         self.reviewSkillFilePaths = reviewSkillFilePaths
+        self.importedReviewGuidelines = importedReviewGuidelines
         self.autoReview = autoReview
         self.historyEnabled = historyEnabled
         self.historyRetentionDays = historyRetentionDays
@@ -126,6 +130,10 @@ public struct AppSettings: Sendable, Codable, Equatable {
         reviewLanguage = try c.decodeIfPresent(AppLanguage.self, forKey: .reviewLanguage) ?? d.reviewLanguage
         reviewSkill = try c.decodeIfPresent(String.self, forKey: .reviewSkill) ?? d.reviewSkill
         reviewSkillFilePaths = try c.decodeIfPresent([String].self, forKey: .reviewSkillFilePaths) ?? d.reviewSkillFilePaths
+        importedReviewGuidelines = try c.decodeIfPresent(
+            [ImportedReviewGuideline].self,
+            forKey: .importedReviewGuidelines
+        ) ?? d.importedReviewGuidelines
         autoReview = try c.decodeIfPresent(Bool.self, forKey: .autoReview) ?? d.autoReview
         historyEnabled = try c.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? d.historyEnabled
         historyRetentionDays = try c.decodeIfPresent(Int.self, forKey: .historyRetentionDays) ?? d.historyRetentionDays

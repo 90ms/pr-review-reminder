@@ -58,6 +58,13 @@ public enum RefreshTrigger: Sendable, Equatable {
     case scheduled
 }
 
+public enum GuidelineDiscoveryState: Equatable {
+    case idle
+    case loading
+    case imported(Int)
+    case failed(String)
+}
+
 public struct FeedbackDraft: Identifiable, Sendable, Equatable {
     public let id = UUID()
     public let title: String
@@ -100,6 +107,7 @@ public final class AppState: ObservableObject {
     @Published public private(set) var feedbackHistoryStorageDiagnostic: StorageDiagnostic
     @Published public private(set) var updateInfo: AppUpdateInfo?
     @Published public private(set) var updateStage: AppUpdateStage = .idle
+    @Published public private(set) var guidelineDiscoveryState: GuidelineDiscoveryState = .idle
     /// PR currently shown in the detail window.
     @Published public var selectedItemID: String?
     /// Persisted review history, newest first.
@@ -296,6 +304,47 @@ public final class AppState: ObservableObject {
         }
         scheduleNextRun()
         return !settingsStorageDiagnostic.health.isFailure && launchAtLoginError == nil
+    }
+
+    public func discoverAndImportGuidelines(repository: String) async {
+        let normalized = repository.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.contains("/") else {
+            guidelineDiscoveryState = .failed(l("guideline_repository_required"))
+            return
+        }
+        if ghPath == nil {
+            await diagnose()
+        }
+        guard let ghPath else {
+            guidelineDiscoveryState = .failed("gh is not ready.")
+            return
+        }
+        let selectedAIPath = settings.aiTool == .claude ? claudePath : codexPath
+        guard selectedAIPath != nil else {
+            guidelineDiscoveryState = .failed(
+                String(format: l("guideline_ai_unavailable"), settings.aiTool.displayName)
+            )
+            return
+        }
+
+        guidelineDiscoveryState = .loading
+        let github = GitHubService(runner: runner, ghPath: ghPath)
+        let ai = AIService(runner: runner, claudePath: claudePath, codexPath: codexPath)
+        let service = GuidelineDiscoveryService(github: github, ai: ai, tool: settings.aiTool)
+        do {
+            let imported = try await service.discover(repository: normalized)
+            settings.importedReviewGuidelines.removeAll { $0.repository == normalized }
+            settings.importedReviewGuidelines.append(contentsOf: imported)
+            guidelineDiscoveryState = .imported(imported.count)
+        } catch is CancellationError {
+            guidelineDiscoveryState = .idle
+        } catch {
+            guidelineDiscoveryState = .failed("\(error)")
+        }
+    }
+
+    public func removeImportedGuideline(id: String) {
+        settings.importedReviewGuidelines.removeAll { $0.id == id }
     }
 
     public func checkForUpdates() async {
@@ -591,7 +640,11 @@ public final class AppState: ObservableObject {
                 }
             }
             let (analysis, usage) = try await ai.analyze(
-                title: pr.title, body: details.body, diff: details.diff, settings: settings
+                title: pr.title,
+                body: details.body,
+                diff: details.diff,
+                repository: pr.repository,
+                settings: settings
             )
             mutate { $0.analysis = analysis; $0.usage = usage; $0.state = .done }
             // Persist to history for later viewing and token-free restore.

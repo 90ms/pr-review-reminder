@@ -7,6 +7,7 @@ public struct SettingsView: View {
     @State private var reposText = ""
     @State private var showingImporter = false
     @State private var showingSkillFileImporter = false
+    @State private var guidelineRepository = ""
 
     public init() {}
 
@@ -156,9 +157,83 @@ public struct SettingsView: View {
                     Text(path)
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    .lineLimit(1)
                 }
             }
+            Divider()
+            Text(app.l("repository_guidelines"))
+                .font(.callout.weight(.semibold))
+            TextField(app.l("guideline_repository_ph"), text: $guidelineRepository)
+                .onAppear {
+                    guard guidelineRepository.isEmpty,
+                          let first = app.settings.repositories.first else {
+                        return
+                    }
+                    guidelineRepository = first.contains("/")
+                        ? first
+                        : "\(app.settings.owner)/\(first)"
+                }
+            Button {
+                Task { await app.discoverAndImportGuidelines(repository: guidelineRepository) }
+            } label: {
+                Label(app.l("discover_guidelines"), systemImage: "magnifyingglass")
+            }
+            .disabled(
+                guidelineRepository.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || app.guidelineDiscoveryState == .loading
+            )
+            guidelineDiscoveryStatus
+
+            if app.settings.importedReviewGuidelines.isEmpty {
+                Text(app.l("imported_guidelines_empty"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(app.settings.importedReviewGuidelines) { guideline in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(guideline.path)
+                                .lineLimit(1)
+                            Spacer()
+                            Button(app.l("delete")) {
+                                app.removeImportedGuideline(id: guideline.id)
+                            }
+                        }
+                        Text("\(guideline.repository) · \(guideline.category.rawValue)")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                        if !guideline.reason.isEmpty {
+                            Text(guideline.reason)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var guidelineDiscoveryStatus: some View {
+        switch app.guidelineDiscoveryState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack {
+                ProgressView().controlSize(.small)
+                Text(app.l("discovering_guidelines"))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        case .imported(let count):
+            Text(String(format: app.l("guidelines_imported"), count))
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .failed(let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
         }
     }
 

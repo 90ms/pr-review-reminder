@@ -200,6 +200,7 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         XCTAssertEqual(settings.reviewLanguage, .system) // new key defaulted
         XCTAssertEqual(settings.reviewSkill, "")         // new key defaulted
         XCTAssertEqual(settings.reviewSkillFilePaths, [])
+        XCTAssertEqual(settings.importedReviewGuidelines, [])
     }
 
     // Without gh, submission builds a project-repository preview and executes nothing.
