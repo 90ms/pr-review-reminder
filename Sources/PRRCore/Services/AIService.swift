@@ -43,7 +43,6 @@ public final class AIService: Sendable {
             diff: diff,
             skill: skill,
             skillPrompts: [],
-            compositionMode: .unified,
             languageDirective: languageDirective,
             maxDiffChars: maxDiffChars
         )
@@ -56,7 +55,6 @@ public final class AIService: Sendable {
         diff: String,
         skill: String = "",
         skillPrompts: [String] = [],
-        compositionMode: PromptCompositionMode,
         languageDirective: String = "",
         maxDiffChars: Int
     ) -> String {
@@ -65,7 +63,7 @@ public final class AIService: Sendable {
             : diff
         let skillBlock = buildSkillBlock(
             skill: skill,
-            skillPrompts: compositionMode == .baseWithSkillFiles ? skillPrompts : []
+            skillPrompts: skillPrompts
         )
         var prompt = template
             .replacingOccurrences(of: "{{TITLE}}", with: title)
@@ -109,6 +107,33 @@ public final class AIService: Sendable {
             )
         }
         return prompts
+    }
+
+    public static func changedPaths(in diff: String) -> [String] {
+        diff.split(separator: "\n").compactMap { line in
+            guard line.hasPrefix("diff --git "),
+                  let separator = line.range(of: " b/") else {
+                return nil
+            }
+            return String(line[separator.upperBound...])
+        }
+    }
+
+    public static func importedGuidelinePrompts(
+        repository: String?,
+        diff: String,
+        settings: AppSettings
+    ) -> [String] {
+        guard let repository else { return [] }
+        let changedPaths = changedPaths(in: diff)
+        return settings.importedReviewGuidelines
+            .filter { $0.repository == repository && $0.applies(to: changedPaths) }
+            .map {
+                """
+                Source: \($0.path) [\($0.category.rawValue), revision \($0.revision)]
+                \($0.content)
+                """
+            }
     }
 
     // MARK: - Command builders (pure, testable)
@@ -298,13 +323,15 @@ public final class AIService: Sendable {
 
     // MARK: - Async operation
 
-    public func analyze(title: String, body: String, diff: String, settings: AppSettings) async throws -> (analysis: Analysis, usage: AIUsage?) {
-        let skillPrompts: [String]
-        if settings.promptCompositionMode == .baseWithSkillFiles {
-            skillPrompts = try Self.loadSkillPromptFiles(settings.reviewSkillFilePaths)
-        } else {
-            skillPrompts = []
-        }
+    public func analyze(
+        title: String,
+        body: String,
+        diff: String,
+        repository: String? = nil,
+        settings: AppSettings
+    ) async throws -> (analysis: Analysis, usage: AIUsage?) {
+        let skillPrompts = try Self.loadSkillPromptFiles(settings.reviewSkillFilePaths)
+            + Self.importedGuidelinePrompts(repository: repository, diff: diff, settings: settings)
         if (!settings.reviewSkill.isEmpty || !skillPrompts.isEmpty),
            !settings.promptTemplate.contains("{{SKILL}}") {
             throw AIError("The review prompt template must contain {{SKILL}} to include the selected review guidelines.")
@@ -314,7 +341,6 @@ public final class AIService: Sendable {
             title: title, body: body, diff: diff,
             skill: settings.reviewSkill,
             skillPrompts: skillPrompts,
-            compositionMode: settings.promptCompositionMode,
             languageDirective: settings.reviewLanguage.promptDirective(),
             maxDiffChars: maxDiffChars
         )

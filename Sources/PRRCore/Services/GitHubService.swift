@@ -53,6 +53,18 @@ public struct GitHubIssueCreationResult: Sendable, Equatable {
     }
 }
 
+public struct GitHubRepositoryTreeEntry: Sendable, Equatable {
+    public let path: String
+    public let type: String
+    public let size: Int?
+
+    public init(path: String, type: String, size: Int?) {
+        self.path = path
+        self.type = type
+        self.size = size
+    }
+}
+
 /// Extra per-PR details fetched on demand (not available from search).
 public struct PRDetails: Sendable, Equatable, Codable {
     public let body: String
@@ -286,6 +298,63 @@ public final class GitHubService: Sendable {
             arguments: ["pr", "diff", String(number), "-R", repository],
             timeout: longReadTimeout
         )
+    }
+
+    public static func repositoryDefaultBranchCommand(gh: String, repository: String) -> Command {
+        Command(
+            executable: gh,
+            arguments: ["api", "repos/\(repository)", "--jq", ".default_branch"],
+            timeout: readTimeout
+        )
+    }
+
+    public static func repositoryCommitCommand(gh: String, repository: String, revision: String) -> Command {
+        Command(
+            executable: gh,
+            arguments: [
+                "api", "repos/\(repository)/commits/\(encodedPathComponent(revision))",
+                "--jq", ".sha",
+            ],
+            timeout: readTimeout
+        )
+    }
+
+    public static func repositoryTreeCommand(gh: String, repository: String, revision: String) -> Command {
+        Command(
+            executable: gh,
+            arguments: [
+                "api", "repos/\(repository)/git/trees/\(encodedPathComponent(revision))",
+                "-f", "recursive=1",
+                "--method", "GET",
+            ],
+            timeout: longReadTimeout
+        )
+    }
+
+    public static func repositoryFileCommand(
+        gh: String,
+        repository: String,
+        path: String,
+        revision: String
+    ) -> Command {
+        let encodedPath = path.split(separator: "/", omittingEmptySubsequences: false)
+            .map { encodedPathComponent(String($0)) }
+            .joined(separator: "/")
+        return Command(
+            executable: gh,
+            arguments: [
+                "api", "repos/\(repository)/contents/\(encodedPath)",
+                "-f", "ref=\(revision)",
+                "--method", "GET",
+                "-H", "Accept: application/vnd.github.raw+json",
+            ],
+            timeout: readTimeout
+        )
+    }
+
+    private static func encodedPathComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     public static func headShaCommand(gh: String, repository: String, number: Int) -> Command {
@@ -740,6 +809,71 @@ public final class GitHubService: Sendable {
         ))
         guard result.succeeded else { throw GitHubError("view issue failed: \(result.stderr)") }
         return try FeedbackService.parseIssueStatus(result.stdout)
+    }
+
+    public func fetchRepositoryDefaultBranch(_ repository: String) async throws -> String {
+        let execution = try await runRead(Self.repositoryDefaultBranchCommand(
+            gh: gh,
+            repository: repository
+        ))
+        let branch = execution.result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branch.isEmpty else { throw GitHubError("Repository default branch is empty.") }
+        return branch
+    }
+
+    public func fetchRepositoryRevision(_ repository: String, revision: String) async throws -> String {
+        let execution = try await runRead(Self.repositoryCommitCommand(
+            gh: gh,
+            repository: repository,
+            revision: revision
+        ))
+        let sha = execution.result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sha.isEmpty else { throw GitHubError("Repository revision is empty.") }
+        return sha
+    }
+
+    public func fetchRepositoryTree(
+        _ repository: String,
+        revision: String
+    ) async throws -> [GitHubRepositoryTreeEntry] {
+        struct TreeResponse: Decodable {
+            struct Entry: Decodable {
+                let path: String
+                let type: String
+                let size: Int?
+            }
+            let tree: [Entry]
+            let truncated: Bool?
+        }
+        let execution = try await runRead(Self.repositoryTreeCommand(
+            gh: gh,
+            repository: repository,
+            revision: revision
+        ))
+        guard let data = execution.result.stdout.data(using: .utf8),
+              let response = try? JSONDecoder().decode(TreeResponse.self, from: data) else {
+            throw GitHubError("Could not decode the repository tree.")
+        }
+        guard response.truncated != true else {
+            throw GitHubError("The repository tree is too large to search completely.")
+        }
+        return response.tree.map {
+            GitHubRepositoryTreeEntry(path: $0.path, type: $0.type, size: $0.size)
+        }
+    }
+
+    public func fetchRepositoryFile(
+        _ repository: String,
+        path: String,
+        revision: String
+    ) async throws -> String {
+        let execution = try await runRead(Self.repositoryFileCommand(
+            gh: gh,
+            repository: repository,
+            path: path,
+            revision: revision
+        ))
+        return execution.result.stdout
     }
 
     @discardableResult

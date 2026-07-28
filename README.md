@@ -74,7 +74,7 @@ brew uninstall pr-review-reminder
 ```
 
 제거해도 사용자 설정과 히스토리는 자동으로 삭제하지 않습니다.
-Homebrew 설치본은 앱의 **설정 → 업데이트**에서도 최신 Formula를 확인하고 설치할 수
+Homebrew 설치본은 앱의 **설정 → 일반 → 업데이트**에서도 최신 Formula를 확인하고 설치할 수
 있습니다. tap 갱신, 버전 조회, 빌드·설치와 링크 갱신 상태를 구분해 표시하며 진행
 중인 작업을 취소할 수 있습니다. 설치가 완료되면 새 버전을 실행하고 기존 앱을
 자동으로 종료합니다. 재실행에 실패한 경우 **지금 다시 시작** 버튼으로 다시 시도할
@@ -93,21 +93,25 @@ pr-review-reminder --doctor
 
 1. 리뷰를 찾을 GitHub owner/org와 선택적 repository 목록
 2. 사용할 AI 도구(`claude` 또는 `codex`)와 리뷰 출력 언어
-3. 수동 수집 또는 매일/주기별 스케줄
-4. 히스토리 보존 기간, Codex 단가와 선택적 로컬 토큰 예산
-5. 알림, 로그인 시 실행, 최근 예약 실행 결과
+3. 직접 작성하거나 파일에서 불러온 리뷰 가이드라인
+4. 저장소에서 탐색·분류해 임포트한 프로젝트 가이드라인
+5. 자동화 탭의 매일/주기별 스케줄과 자동 리뷰
+6. 일반 탭의 알림, 로그인 시 실행과 업데이트
+7. 데이터 탭의 히스토리 보존 기간과 로컬 저장소 상태
 
 ## 사용 흐름
 
 1. **새로고침**으로 리뷰 대기 PR과 내 PR에 도착한 미승인 리뷰 피드백을 수집합니다.
    이 단계는 AI 리뷰를 실행하거나 GitHub에 쓰지 않습니다.
-2. PR 카드에서 **코드 리뷰**를 눌러 AI 초안을 생성합니다. 설정에서 통합 프롬프트
-   또는 베이스 프롬프트 + 자식 스킬 프롬프트 파일 방식을 선택할 수 있습니다.
+2. PR 카드에서 **코드 리뷰**를 눌러 AI 초안을 생성합니다. 직접 작성한 지침,
+   선택한 가이드라인 파일과 저장소에서 임포트한 프로젝트 문서는 하나의 리뷰
+   컨텍스트로 조합됩니다.
    완료된 PR은 **리뷰 다시하기**로 현재 head와 diff를 다시 가져와 새 초안을 만들 수 있습니다.
 3. **자세히 보기**에서 `리뷰 / 변경 내용 / 나란히` 레이아웃을 선택하고 요약,
    리뷰 포인트, Split/Unified diff와 인라인 코멘트를 검토·편집합니다.
 4. 제출 미리보기에서 인라인 코멘트를 다시 편집하거나 삭제한 뒤 코멘트만 남기거나
-   코멘트와 함께 승인할지 선택합니다.
+   코멘트와 함께 승인할지 선택합니다. 남길 코멘트나 리뷰 포인트가 없으면
+   **문제 없음 · 승인**으로 기본 승인 문구를 확인한 뒤 승인할 수 있습니다.
 5. **히스토리**에서 과거 상세/diff를 열거나 현재 head를 가져와 다시 리뷰합니다.
 
 ## 주요 기능
@@ -116,9 +120,10 @@ pr-review-reminder --doctor
 |---|---|
 | PR 수집 | `review-requested:@me` 리뷰 요청 인박스와 `author:@me` 미승인 피드백 인박스, owner/repository 범위 설정, 최대 1,000건 검색 |
 | 조회 진단 | GitHub 재시도 횟수, rate limit 실패와 1,000건 검색 상한 표시 |
-| AI 리뷰 | Claude/Codex CLI, 통합 프롬프트 또는 베이스+스킬 파일 프롬프트, 완료 결과 다시 리뷰, 10분 timeout과 취소 |
+| AI 리뷰 | Claude/Codex CLI, 직접 지침·가이드라인 파일·저장소 문서 조합, 완료 결과 다시 리뷰, 10분 timeout과 취소 |
+| 저장소 가이드라인 | 기본 브랜치의 `AGENTS.md`, `CLAUDE.md`, 리뷰 스킬, 컨벤션·아키텍처 Markdown 후보 탐색과 선택 AI 분류 |
 | 상세·Diff | 리뷰/변경/나란히 집중 보기, 파일 검색·변경 줄·인라인 코멘트 위치 이동, 긴 줄 가로 스크롤 |
-| 게시 안전 | 미리보기, 게시 직전 head SHA 재확인, 단일 GitHub review 제출 |
+| 게시 안전 | 코멘트 없는 승인, 미리보기, 게시 직전 head SHA 재확인, 단일 GitHub review 제출 |
 | 히스토리 | 상세/diff 저장, 같은 head 결과 복원, 보존 기간과 전체 삭제 |
 | 사용량 | Claude 보고 비용, Codex 설정 단가 기반 추정, 기간별 로컬 토큰 예산 |
 | 자동화 | 매일 또는 N시간 간격 수집, 최근 실행 결과 보존, 실패 알림, 로그인 시 실행, 선택적 자동 분석 |
@@ -134,6 +139,9 @@ pr-review-reminder --doctor
   `claude` 또는 `codex` CLI를 통해 해당 서비스 제공자에게 전달됩니다. 앱은 AI CLI를
   빈 임시 작업 디렉터리, 최소 환경 변수, 쓰기 제한과 10분 제한시간으로 실행하지만,
   계정·보존·학습 정책은 사용 중인 CLI와 서비스 제공자의 정책을 따릅니다.
+- **저장소에서 찾아보기**를 실행하면 `gh`가 기본 브랜치의 Markdown 후보를 읽고,
+  제한된 본문 발췌를 선택한 AI CLI에 전달해 리뷰·컨벤션·아키텍처 관련성을
+  분류합니다. 임포트된 원문, 저장소, 경로와 revision은 앱 설정에 저장됩니다.
 - 히스토리를 켜면 PR 본문, diff, AI 결과와 사용량을
   `~/Library/Application Support/PRReviewReminder/history.json`에 저장합니다.
 - 등록한 피드백 이슈의 제목·본문·URL·상태는 `UserDefaults`에, 내 PR 피드백의 마지막
@@ -202,29 +210,7 @@ OUTPUT_DIR=/tmp/prr-package APP_VERSION=0.5.1 BUILD_NUMBER=51 \
   ./Scripts/build-app.sh
 ```
 
-## 선택적 이슈 구현 자동화
-
-유지보수자는 앱과 별도로 Synology NAS에서 승인 기반 이슈 워커를 운영할 수 있습니다.
-새 GitHub 이슈를 기존 Slack 채널에 라벨·제목·설명 요약과 함께 알립니다.
-`codex-ready` 이슈에서는 허용된 사용자가 **구현 시작**을 누른 경우에만 NAS의
-격리 Runner가 최신 `main`에서 구현·테스트·문서 갱신을 수행하고, 별도 Controller가
-결과를 검증해 Draft PR을 생성합니다.
-
-```text
-new issue → Slack 요약
-codex-ready issue → Slack 요약·승인 → Controller queue → 격리 Codex Runner
-                         → Controller 검증·Draft PR → macOS CI 알림
-```
-
-자동 병합·review·approval·릴리스는 수행하지 않습니다. 실제 토큰과 CLI 인증은 NAS에만
-두며 공개 저장소에는 Docker/Compose 예제와 스킬, 테스트만 포함합니다. Runner에는
-GitHub·Slack 인증을 전달하지 않고 OpenAI/ChatGPT allowlist proxy만 허용합니다.
-Slack 원본 메시지는 준비·Codex 실행·검증·push·PR·CI 단계와 Runner heartbeat를
-자동 갱신하며, 허용 사용자는 **상태 새로고침**으로 즉시 확인할 수 있습니다.
-기존 단일 컨테이너 설치는 인증과 상태를 유지한 채 전환할 수 있습니다. 설치 전에는
-[운영 계약](docs/ISSUE_AUTOMATION.md)과
-[Synology 설정 가이드](docs/SYNOLOGY_AUTOMATION.md)의 공개 이슈 및 Codex 인증
-주의사항을 확인하세요.
+## PR 통합 검증
 
 여러 Draft PR의 병합 순서, 교차 충돌, 통합 테스트와 릴리스 준비 상태는 저장소의
 `$validate-github-prs` 스킬로 읽기 전용 검증할 수 있습니다. 이 스킬은 임시
@@ -256,7 +242,6 @@ Sources/
 Tests/               단위·오케스트레이션·스크립트 테스트
 Scripts/             앱 패키징, launcher, Formula renderer
 .agents/skills/      릴리스·이슈 구현·다중 PR 검증 Codex workflow
-automation/synology/ 선택적 Slack 승인·Codex Draft PR 워커
 ```
 
 ## 알려진 제약
@@ -273,12 +258,12 @@ automation/synology/ 선택적 Slack 승인·Codex Draft PR 워커
 
 ## 문서
 
+- [GitHub Wiki](https://github.com/90ms/pr-review-reminder/wiki)
+- [Wiki 홈 원본](docs/WIKI_HOME.md)
 - [제품 소개와 흐름](docs/PROJECT_OVERVIEW.md)
 - [현재 제품 명세](docs/SPEC.md)
 - [Homebrew 배포 가이드](docs/HOMEBREW.md)
 - [릴리스 가이드](docs/RELEASING.md)
-- [이슈 자동화 운영 계약](docs/ISSUE_AUTOMATION.md)
-- [Synology 이슈 자동화 설정](docs/SYNOLOGY_AUTOMATION.md)
 - [macOS 수동 검증 체크리스트](docs/MACOS_VALIDATION.md)
 - [실행 계획](tasks/plan.md)
 - [변경 기록](CHANGELOG.md)

@@ -7,6 +7,7 @@ public struct SettingsView: View {
     @State private var reposText = ""
     @State private var showingImporter = false
     @State private var showingSkillFileImporter = false
+    @State private var guidelineRepository = ""
 
     public init() {}
 
@@ -15,13 +16,6 @@ public struct SettingsView: View {
         case .system: return app.l("lang_system")
         case .korean: return app.l("lang_korean")
         case .english: return app.l("lang_english")
-        }
-    }
-
-    private func promptModeLabel(_ mode: PromptCompositionMode) -> String {
-        switch mode {
-        case .unified: return app.l("prompt_mode_unified")
-        case .baseWithSkillFiles: return app.l("prompt_mode_base_files")
         }
     }
 
@@ -36,6 +30,8 @@ public struct SettingsView: View {
                     .tabItem { Label(app.l("settings_tab_automation"), systemImage: "clock.arrow.circlepath") }
                 Form { dataSettings }
                     .tabItem { Label(app.l("settings_tab_data"), systemImage: "externaldrive") }
+                Form { advancedSettings }
+                    .tabItem { Label(app.l("settings_tab_advanced"), systemImage: "slider.horizontal.3") }
             }
             .formStyle(.grouped)
 
@@ -81,28 +77,38 @@ public struct SettingsView: View {
             Picker(app.l("app_language"), selection: $app.settings.appLanguage) {
                 ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
             }
-            Picker(app.l("review_language"), selection: $app.settings.reviewLanguage) {
-                ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
+        }
+
+        Section(app.l("sec_app_behavior")) {
+            Toggle(app.l("enable_notifications"), isOn: $app.settings.notificationsEnabled)
+            Toggle(app.l("launch_at_login"), isOn: $app.settings.launchAtLogin)
+            if let error = app.launchAtLoginError {
+                Text(String(format: app.l("launch_at_login_failed"), error))
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
             }
         }
 
+        Section(app.l("sec_update")) {
+            updateControls
+        }
+    }
+
+    @ViewBuilder private var reviewSettings: some View {
         Section(app.l("sec_github")) {
             TextField(app.l("owner"), text: $app.settings.owner)
             TextField(app.l("repos_ph"), text: $reposText)
                 .onAppear { reposText = app.settings.repositories.joined(separator: ", ") }
         }
 
-        Section(app.l("sec_deps")) {
-            dependencyRows
-            Button(app.l("recheck")) { Task { await app.diagnose() } }
-        }
-    }
-
-    @ViewBuilder private var reviewSettings: some View {
         Section(app.l("sec_ai")) {
             Picker(app.l("tool"), selection: $app.settings.aiTool) {
                 ForEach(AITool.allCases) { Text($0.displayName).tag($0) }
             }.pickerStyle(.segmented)
+            Picker(app.l("review_language"), selection: $app.settings.reviewLanguage) {
+                ForEach(AppLanguage.allCases) { Text(langLabel($0)).tag($0) }
+            }
             if app.settings.aiTool == .codex {
                 TextField(app.l("codex_input_price"), value: $app.settings.codexInputPricePerMillion, format: .number)
                 TextField(app.l("codex_output_price"), value: $app.settings.codexOutputPricePerMillion, format: .number)
@@ -124,17 +130,6 @@ public struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
 
-        Section(app.l("sec_prompt")) {
-            Picker(app.l("prompt_mode"), selection: $app.settings.promptCompositionMode) {
-                ForEach(PromptCompositionMode.allCases) { mode in
-                    Text(promptModeLabel(mode)).tag(mode)
-                }
-            }.pickerStyle(.segmented)
-            TextEditor(text: $app.settings.promptTemplate)
-                .font(.caption.monospaced()).frame(minHeight: 120)
-            Text(app.l("prompt_help")).font(.caption2).foregroundStyle(.secondary)
-        }
-
         Section(app.l("sec_skill")) {
             TextEditor(text: $app.settings.reviewSkill)
                 .font(.caption.monospaced()).frame(minHeight: 90)
@@ -145,28 +140,100 @@ public struct SettingsView: View {
                     Button(app.l("clear")) { app.settings.reviewSkill = "" }
                 }
             }
-            if app.settings.promptCompositionMode == .baseWithSkillFiles {
-                Divider()
-                Button(app.l("add_skill_files")) { showingSkillFileImporter = true }
-                if app.settings.reviewSkillFilePaths.isEmpty {
-                    Text(app.l("skill_files_empty")).font(.caption2).foregroundStyle(.secondary)
-                } else {
-                    ForEach(app.settings.reviewSkillFilePaths, id: \.self) { path in
+            Divider()
+            Button(app.l("add_skill_files")) { showingSkillFileImporter = true }
+            if app.settings.reviewSkillFilePaths.isEmpty {
+                Text(app.l("skill_files_empty")).font(.caption2).foregroundStyle(.secondary)
+            } else {
+                ForEach(app.settings.reviewSkillFilePaths, id: \.self) { path in
+                    HStack {
+                        Text((path as NSString).lastPathComponent)
+                            .lineLimit(1)
+                        Spacer()
+                        Button(app.l("delete")) {
+                            app.settings.reviewSkillFilePaths.removeAll { $0 == path }
+                        }
+                    }
+                    Text(path)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+            }
+            Divider()
+            Text(app.l("repository_guidelines"))
+                .font(.callout.weight(.semibold))
+            TextField(app.l("guideline_repository_ph"), text: $guidelineRepository)
+                .onAppear {
+                    guard guidelineRepository.isEmpty,
+                          let first = app.settings.repositories.first else {
+                        return
+                    }
+                    guidelineRepository = first.contains("/")
+                        ? first
+                        : "\(app.settings.owner)/\(first)"
+                }
+            Button {
+                Task { await app.discoverAndImportGuidelines(repository: guidelineRepository) }
+            } label: {
+                Label(app.l("discover_guidelines"), systemImage: "magnifyingglass")
+            }
+            .disabled(
+                guidelineRepository.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || app.guidelineDiscoveryState == .loading
+            )
+            guidelineDiscoveryStatus
+
+            if app.settings.importedReviewGuidelines.isEmpty {
+                Text(app.l("imported_guidelines_empty"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(app.settings.importedReviewGuidelines) { guideline in
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text((path as NSString).lastPathComponent)
+                            Text(guideline.path)
                                 .lineLimit(1)
                             Spacer()
                             Button(app.l("delete")) {
-                                app.settings.reviewSkillFilePaths.removeAll { $0 == path }
+                                app.removeImportedGuideline(id: guideline.id)
                             }
                         }
-                        Text(path)
+                        Text("\(guideline.repository) · \(guideline.category.rawValue)")
                             .font(.caption2.monospaced())
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        if !guideline.reason.isEmpty {
+                            Text(guideline.reason)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var guidelineDiscoveryStatus: some View {
+        switch app.guidelineDiscoveryState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack {
+                ProgressView().controlSize(.small)
+                Text(app.l("discovering_guidelines"))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        case .imported(let count):
+            Text(String(format: app.l("guidelines_imported"), count))
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .failed(let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
         }
     }
 
@@ -207,20 +274,8 @@ public struct SettingsView: View {
             }
         }
 
-        Section {
-            Toggle(app.l("enable_notifications"), isOn: $app.settings.notificationsEnabled)
+        Section(app.l("sec_automatic_review")) {
             Toggle(app.l("auto_review"), isOn: $app.settings.autoReview)
-            Toggle(app.l("launch_at_login"), isOn: $app.settings.launchAtLogin)
-            if let error = app.launchAtLoginError {
-                Text(String(format: app.l("launch_at_login_failed"), error))
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
-        }
-
-        Section(app.l("sec_update")) {
-            updateControls
         }
     }
 
@@ -250,6 +305,19 @@ public struct SettingsView: View {
                 title: app.l("history_storage"),
                 diagnostic: app.historyStorageDiagnostic
             )
+        }
+    }
+
+    @ViewBuilder private var advancedSettings: some View {
+        Section(app.l("sec_prompt")) {
+            TextEditor(text: $app.settings.promptTemplate)
+                .font(.caption.monospaced()).frame(minHeight: 180)
+            Text(app.l("prompt_help")).font(.caption2).foregroundStyle(.secondary)
+        }
+
+        Section(app.l("sec_deps")) {
+            dependencyRows
+            Button(app.l("recheck")) { Task { await app.diagnose() } }
         }
     }
 

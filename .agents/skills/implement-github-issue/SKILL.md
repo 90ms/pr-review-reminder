@@ -1,12 +1,12 @@
 ---
 name: implement-github-issue
-description: Implement an explicitly approved GitHub issue in an isolated checkout, including tests, relevant documentation, and reviewable commits. Use when a maintainer or the Synology issue automation asks Codex to work a numbered issue from the repository's main branch and prepare a branch for a Draft PR.
+description: Implement an explicitly approved GitHub issue in an isolated checkout, including tests, relevant documentation, and reviewable commits. Use when a maintainer asks Codex to work a numbered issue from the repository's main branch and prepare a reviewable branch.
 ---
 
 # Implement GitHub Issue
 
-Implement only the approved issue. Leave publishing, labels, Slack messages, Draft PR creation,
-and merging to the surrounding automation.
+Implement only the approved issue. Leave publishing, labels, PR creation, and merging to the
+maintainer.
 
 ## Preconditions
 

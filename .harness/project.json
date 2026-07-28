@@ -3,8 +3,7 @@
   "commands": {
     "build": "swift build",
     "test": "swift test",
-    "bundle": "Scripts/build-app.sh",
-    "automationTest": "PYTHONPATH=automation/synology/src python3 -m unittest discover -s automation/synology/tests -v"
+    "bundle": "Scripts/build-app.sh"
   },
   "boundaries": [
     "Do not commit secrets or machine-specific configuration.",
