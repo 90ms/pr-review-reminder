@@ -31,6 +31,11 @@ final class LocalizationAndFeedbackTests: XCTestCase {
         let en = L10n(language: .english)
         XCTAssertEqual(ko("approve"), "승인")
         XCTAssertEqual(en("approve"), "Approve")
+        XCTAssertEqual(ko("approve_no_issues"), "문제 없음 · 승인")
+        XCTAssertEqual(
+            en("approve_no_issues_body"),
+            "I found no issues requiring inline comments. Approving."
+        )
         XCTAssertEqual(ko("diff_split"), "분할")
         XCTAssertEqual(ko("tokens_unit"), "토큰")
         XCTAssertEqual(en("diff_unified"), "Unified")

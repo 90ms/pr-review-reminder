@@ -207,8 +207,8 @@ public struct PRDetailView: View {
                         section("\(app.l("inline_comments")) (\(editableComments.count))") {
                             inlineEditor
                         }
-                        actionButtons(item)
                     }
+                    actionButtons(item)
                 }
             }
             .padding(12)
@@ -262,9 +262,20 @@ public struct PRDetailView: View {
                 pending = .summary(item.analysis?.summary ?? "")
             } label: { Label(app.l("summary"), systemImage: "square.and.pencil") }
             Button {
-                approveBody = ""
+                let hasReviewPoints = !(item.analysis?.reviewPoints.isEmpty ?? true)
+                approveBody = editableComments.isEmpty && !hasReviewPoints
+                    ? app.l("approve_no_issues_body")
+                    : ""
                 pending = .approve
-            } label: { Label(app.l("approve"), systemImage: "checkmark.seal") }
+            } label: {
+                let hasReviewPoints = !(item.analysis?.reviewPoints.isEmpty ?? true)
+                Label(
+                    editableComments.isEmpty && !hasReviewPoints
+                        ? app.l("approve_no_issues")
+                        : app.l("approve"),
+                    systemImage: "checkmark.seal"
+                )
+            }
         }
     }
 
