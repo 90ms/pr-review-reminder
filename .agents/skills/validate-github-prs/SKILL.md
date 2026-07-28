@@ -12,7 +12,7 @@ Treat individual green CI as necessary but insufficient when validating multiple
 
 - Read repository agent instructions and project commands before validation.
 - Use `gh` and `git` with the caller's existing authentication. Never read or print tokens.
-- Do not post reviews, approvals, comments, labels, status checks, or Slack messages.
+- Do not post reviews, approvals, comments, labels, or status checks.
 - Do not push, merge, close, edit, or convert PRs from Draft.
 - Do not edit source files to make a PR pass. Report required fixes against the relevant PR.
 - Preserve dirty worktrees. Perform checkouts and merge simulations only in temporary worktrees.
@@ -92,7 +92,7 @@ unsafe behavior, missing required coverage, or release blockers. Use `BLOCKED` w
 cannot be obtained safely.
 
 For this repository, inspect `.github/workflows/ci.yml`, the bundle build, launcher and Formula
-tests, Synology automation tests when relevant, and `docs/MACOS_VALIDATION.md`. Do not call a
+tests, and `docs/MACOS_VALIDATION.md`. Do not call a
 release ready when required macOS or distribution checks remain unverified.
 
 ## Report

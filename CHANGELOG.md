@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prompt composition no longer exposes Unified/Base + Files modes. Inline
   guidance, local files, and imported repository documents are always combined.
 
+### Removed
+
+- Deployment-specific auxiliary services, container configuration, and
+  operating documentation that are not part of the macOS application.
+
 ## [0.5.1] - 2026-07-27
 
 ### Fixed
@@ -37,14 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New GitHub issues are announced once in the existing Slack issue channel with
-  their labels, title, author, and a short description excerpt.
 - A repository-local `$validate-github-prs` skill reviews individual and combined
   PR changes for merge and release readiness without changing GitHub state.
 - Review prompts can compose a base template with one or more persisted skill
   files, and inline comment previews remain editable and individually removable.
-- Dependabot monitors GitHub Actions, Python, and container dependencies, while
-  CodeQL scans the Swift and Python code paths.
+- Dependabot monitors GitHub Actions and CodeQL scans the Swift code path.
 
 ### Changed
 
@@ -77,18 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings are grouped into General, Review, Automation, and Data tabs.
 - A repository-local `$implement-github-issue` skill for implementing an
   explicitly approved issue with tests, documentation, and reviewable commits.
-- An optional Synology worker that scans labeled issues, requests approval with
-  a Slack Socket Mode button, runs the locally authenticated Codex CLI in an
-  isolated checkout, and opens a Draft PR.
-- SQLite leases, protected-path checks, timeout recovery, CI result
-  notifications, dry-run mode, Docker Compose deployment, and NAS setup
-  documentation for the issue worker.
-- A versioned file-queue protocol and separate Codex Runner image with an
-  internal network, an OpenAI/ChatGPT allowlisted egress proxy, and heartbeat
-  health checks.
-- Persistent Controller/Runner job phases, an independent in-job heartbeat,
-  rate-limited live Slack status, authorized manual refresh, and one-time stale
-  or timeout warnings.
 
 ### Fixed
 
@@ -96,19 +86,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pull request metadata.
 - Feedback issue status refresh continues updating other records when one issue
   lookup fails.
-- The Synology image now installs GitHub CLI from its official signed apt
-  repository and verifies persistent headless-login support instead of using
-  Debian's outdated community package.
-- The container now overrides the host-side `GH_CONFIG_DIR` mount source with
-  its in-container path so `gh` can find the persisted login.
-- Failed and blocked issue jobs now both retain a Slack retry action.
-- Controller-side validation restores trusted Git configuration and rejects
-  protected paths, changed symlinks, invalid ancestry, and generated credential
-  material before pushing a branch.
-- The default Synology Compose deployment no longer requires PID, CPU CFS, or
-  memory cgroups that are unavailable on some DSM kernels.
-- Synology issue workspaces now ignore bind-mount executable-bit drift instead
-  of treating every `100644` file as a protected-path modification.
 
 ## [0.3.1] - 2026-07-24
 

@@ -1,8 +1,0 @@
-.git
-.build
-dist
-**/__pycache__
-**/*.py[cod]
-**/.venv
-automation/synology/build
-automation/synology/data
