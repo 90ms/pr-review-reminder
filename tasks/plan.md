@@ -1,6 +1,6 @@
 # 실행 계획 — PR Review Reminder
 
-> 상태 기준일: 2026-07-27. 완료된 구현과 남은 운영 작업을 구분한다.
+> 상태 기준일: 2026-07-28. 완료된 구현과 남은 운영 작업을 구분한다.
 
 기준 계약은 [`docs/SPEC.md`](../docs/SPEC.md)다. 모든 GitHub 쓰기는 사용자의
 명시적 액션으로만 시작하며 테스트와 CI에서는 실제 게시하지 않는다.
@@ -19,8 +19,8 @@
 | UI | 긴 줄 가로 스크롤, 동적 제목, 앱 아이콘, 다음 실행, 기본 접근성 label | build + 수동 확인 대상 |
 | 동시성 | Swift 6 language mode | macOS 15 CI build/test/bundle |
 | 배포 기반 | ad-hoc ZIP/checksum과 선택적 Developer ID 서명·공증 workflow | main CI |
-| Homebrew 배포 | 공개 tap, 0.5.1 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
-| 최신 릴리스 | 0.5.1 ad-hoc ZIP/checksum과 Homebrew source 설치 | Release workflow + tap CI |
+| Homebrew 배포 | 공개 tap, 0.6.0 source Formula, launcher, install/test/strict audit CI | tap CI + main CI |
+| 최신 릴리스 | 0.6.0 ad-hoc ZIP/checksum과 Homebrew source 설치 | Release workflow + tap CI |
 | 상세 화면 | 리뷰·변경 내용·나란히 레이아웃, diff 오류·빈 결과·재시도 상태 | AppState 테스트 + main CI |
 | 업데이트 UX | 단계별 상태·실패 원인, 프로세스 취소, 링크 갱신, 즉시 재시작 | 서비스 테스트 + main CI |
 | 저장 진단 | 설정·히스토리 위치·크기·저장 시각·오류 표시, 손상 JSON 백업 | 저장소 테스트 + main CI |
